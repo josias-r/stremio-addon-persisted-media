@@ -1,6 +1,8 @@
+process.loadEnvFile(".env");
+
 import http from "node:http";
 import { getManifest } from "./src/manifest.ts";
-import { getMovieMeta, getSeriesMeta, type ContentType } from "./src/meta.ts";
+import { getMovieMeta, getSeriesMeta } from "./src/meta.ts";
 import { getMovieStream, getSeriesStream } from "./src/stream.ts";
 
 const PORT = process.env.PORT || 3000;

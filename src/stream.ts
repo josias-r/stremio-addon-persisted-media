@@ -1,6 +1,3 @@
-import type { ContentType } from "./meta.ts";
-import { setTimeout } from "node:timers/promises";
-
 export interface Subtitle {
   id: string;
   url: string;
@@ -57,22 +54,47 @@ export interface StreamResponse {
   streams: Stream[];
 }
 
+import { fetchJackettResults, type JackettResult } from "./jackett.ts";
+
+function mapJackettToStream(result: JackettResult): Stream | null {
+  let infoHash = result.InfoHash;
+
+  if (!infoHash && result.MagnetUri) {
+    const match = result.MagnetUri.match(/urn:btih:([a-zA-Z0-9]+)/i);
+    if (match) {
+      infoHash = match[1].toLowerCase();
+    }
+  }
+
+  const sizeGB = (result.Size / 1024 / 1024 / 1024).toFixed(2);
+  const titleStr = `${result.Title}\n👤 ${result.Seeders} Seeders | 💾 ${sizeGB} GB`;
+
+  if (infoHash) {
+    return {
+      name: `Jackett - ${result.Tracker}`,
+      title: titleStr,
+      infoHash,
+    } as TorrentStream;
+  }
+
+  if (result.Link && result.Link.startsWith("http")) {
+    return {
+      name: `Jackett - ${result.Tracker}`,
+      title: titleStr,
+      url: result.Link,
+    } as UrlStream;
+  }
+
+  return null;
+}
+
 export async function getMovieStream(id: string): Promise<StreamResponse> {
-  await setTimeout(1000);
-  return {
-    streams: [
-      {
-        name: "1080p Movie Server",
-        title: `Big Buck Bunny Movie - ${id}`,
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      },
-      {
-        name: "720p Movie Server",
-        title: `Elephant's Dream Movie - ${id}`,
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      },
-    ],
-  };
+  const results = await fetchJackettResults(id);
+  const streams = results
+    .map(mapJackettToStream)
+    .filter((s): s is Stream => s !== null);
+
+  return { streams };
 }
 
 export async function getSeriesStream(
@@ -80,19 +102,11 @@ export async function getSeriesStream(
   season: number,
   episode: number,
 ): Promise<StreamResponse> {
-  await setTimeout(5000);
-  return {
-    streams: [
-      {
-        name: "1080p Series Server",
-        title: `Episode S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")} - ${seriesId}`,
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      },
-      {
-        name: "720p Series Server",
-        title: `Alternative Stream - S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")}`,
-        url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      },
-    ],
-  };
+  const query = `${seriesId} S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")}`;
+  const results = await fetchJackettResults(query);
+  const streams = results
+    .map(mapJackettToStream)
+    .filter((s): s is Stream => s !== null);
+
+  return { streams };
 }

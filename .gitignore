@@ -3,3 +3,6 @@ node_modules
 
 # Macos
 .DS_Store
+
+# Env
+.env
