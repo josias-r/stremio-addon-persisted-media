@@ -11,7 +11,11 @@ import {
   type TorrentRecord,
 } from "./db.ts";
 import { getTorrentFiles } from "./qbittorrent.ts";
-import { isDefinitelyWrongEpisode } from "./parse-episode.ts";
+import {
+  isDefinitelyWrongEpisode,
+  isDefinitelyNotFullSeason,
+} from "./parse-episode.ts";
+import { getCinemetaTitle } from "./cinemeta.ts";
 
 interface Subtitle {
   id: string;
@@ -70,6 +74,11 @@ interface StreamResponse {
 }
 
 const PUBLIC_URL = getReqEnvVariable("PUBLIC_URL");
+const JACKETT_SEARCH_TYPE = getReqEnvVariable("JACKETT_SEARCH_TYPE");
+
+if (JACKETT_SEARCH_TYPE !== "imdb" && JACKETT_SEARCH_TYPE !== "text") {
+  throw new Error(`JACKETT_SEARCH_TYPE must be either "imdb" or "text"`);
+}
 
 function extractInfoHash(magnetUri: string | undefined): string | null {
   if (!magnetUri) return null;
@@ -137,21 +146,39 @@ async function getLocalFileStreams(
   return streams;
 }
 
+interface StreamFetchPlan {
+  params: TorznabParams;
+  jackettFilter?: (title: string) => boolean;
+}
+
 async function buildStreamResponse(
   stremioId: string,
-  torznabParams: TorznabParams,
-  isDefinitelyNotWanted?: (title: string) => boolean,
+  fetchPlans: StreamFetchPlan[],
+  localFileFilter?: (title: string) => boolean,
 ): Promise<StreamResponse> {
   let dbTorrents = getTorrentsByStremioId(stremioId);
 
   // If no local streams exist for this specific request,
   // we fetch Jackett and see if any existing torrent hashes match, automatically linking them.
-  let results = await fetchJackettResults(torznabParams);
+  const resultsArrays = await Promise.all(
+    fetchPlans.map(async (plan) => {
+      let planResults = await fetchJackettResults(plan.params);
+      if (plan.jackettFilter) {
+        planResults = planResults.filter((r) => !plan.jackettFilter!(r.Title));
+      }
+      return planResults;
+    }),
+  );
+  let results = resultsArrays.flat();
 
-  // Robust filtering for Jackett results
-  if (isDefinitelyNotWanted) {
-    results = results.filter((r) => !isDefinitelyNotWanted(r.Title));
-  }
+  // Deduplicate Jackett results from concurrent searches
+  const seen = new Set<string>();
+  results = results.filter((r) => {
+    const key = (r.InfoHash || r.MagnetUri || r.Link || r.Title).toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   if (dbTorrents.length === 0) {
     let linkedNew = false;
@@ -169,10 +196,7 @@ async function buildStreamResponse(
     }
   }
 
-  const localStreams = await getLocalFileStreams(
-    dbTorrents,
-    isDefinitelyNotWanted,
-  );
+  const localStreams = await getLocalFileStreams(dbTorrents, localFileFilter);
   const downloadedHashes = new Set(
     dbTorrents.map((t) => t.infoHash.toLowerCase()),
   );
@@ -185,7 +209,18 @@ async function buildStreamResponse(
 }
 
 export async function getMovieStream(id: string): Promise<StreamResponse> {
-  return buildStreamResponse(id, { type: "movie", imdbId: id });
+  let fetchPlans: StreamFetchPlan[] = [
+    { params: { type: "movie_imdb", imdbId: id } },
+  ];
+
+  if (JACKETT_SEARCH_TYPE === "text") {
+    const title = await getCinemetaTitle("movie", id);
+    if (title) {
+      fetchPlans = [{ params: { type: "movie_text", query: title } }];
+    }
+  }
+
+  return buildStreamResponse(id, fetchPlans);
 }
 
 export async function getSeriesStream(
@@ -195,9 +230,42 @@ export async function getSeriesStream(
 ): Promise<StreamResponse> {
   const stremioId = `${seriesId}:${season}:${episode}`;
 
-  return buildStreamResponse(
-    stremioId,
-    { type: "series", imdbId: seriesId, season, episode },
-    (title: string) => isDefinitelyWrongEpisode(title, season, episode),
+  let fetchPlans: StreamFetchPlan[] = [
+    {
+      params: { type: "series_imdb", imdbId: seriesId, season, episode },
+      jackettFilter: (title) =>
+        isDefinitelyWrongEpisode(title, season, episode),
+    },
+    {
+      params: { type: "series_season_imdb", imdbId: seriesId, season },
+      jackettFilter: (title) => isDefinitelyNotFullSeason(title, season),
+    },
+  ];
+
+  if (JACKETT_SEARCH_TYPE === "text") {
+    const title = await getCinemetaTitle("series", seriesId);
+    if (title) {
+      fetchPlans = [
+        {
+          params: { type: "series_text", query: title, season, episode },
+          jackettFilter: (title) => {
+            const decision = isDefinitelyWrongEpisode(title, season, episode);
+            console.log(
+              `Filtering title: ${title} for season ${season}, episode ${episode}`,
+              `Decision: ${decision}`,
+            );
+            return decision;
+          },
+        },
+        {
+          params: { type: "series_season_text", query: title, season },
+          jackettFilter: (title) => isDefinitelyNotFullSeason(title, season),
+        },
+      ];
+    }
+  }
+
+  return buildStreamResponse(stremioId, fetchPlans, (title: string) =>
+    isDefinitelyWrongEpisode(title, season, episode),
   );
 }

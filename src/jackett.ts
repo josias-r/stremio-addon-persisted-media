@@ -24,21 +24,51 @@ export interface JackettResult {
 }
 
 export type TorznabParams =
-  | { type: "movie"; imdbId: string }
-  | { type: "series"; imdbId: string; season: number; episode: number };
+  | { type: "movie_imdb"; imdbId: string }
+  | { type: "movie_text"; query: string }
+  | { type: "series_imdb"; imdbId: string; season: number; episode: number }
+  | { type: "series_text"; query: string; season: number; episode: number }
+  | { type: "series_season_imdb"; imdbId: string; season: number }
+  | { type: "series_season_text"; query: string; season: number };
 
 function buildTorznabQueryString(params: TorznabParams): string {
   const queryParams = new URLSearchParams();
   queryParams.append("apikey", JACKETT_API_KEY as string);
 
-  if (params.type === "movie") {
-    queryParams.append("t", "movie");
-    queryParams.append("imdbid", params.imdbId);
-  } else if (params.type === "series") {
-    queryParams.append("t", "tvsearch");
-    queryParams.append("imdbid", params.imdbId);
-    queryParams.append("season", params.season.toString());
-    queryParams.append("ep", params.episode.toString());
+  switch (params.type) {
+    case "movie_imdb":
+      queryParams.append("t", "movie");
+      queryParams.append("imdbid", params.imdbId);
+      break;
+    case "movie_text":
+      queryParams.append("t", "movie");
+      queryParams.append("q", params.query);
+      break;
+    case "series_imdb":
+      queryParams.append("t", "tvsearch");
+      queryParams.append("imdbid", params.imdbId);
+      queryParams.append("season", params.season.toString());
+      queryParams.append("ep", params.episode.toString());
+      break;
+    case "series_text":
+      queryParams.append("t", "search");
+      queryParams.append(
+        "q",
+        `${params.query} S${params.season.toString().padStart(2, "0")}E${params.episode.toString().padStart(2, "0")}`,
+      );
+      break;
+    case "series_season_imdb":
+      queryParams.append("t", "tvsearch");
+      queryParams.append("imdbid", params.imdbId);
+      queryParams.append("season", params.season.toString());
+      break;
+    case "series_season_text":
+      queryParams.append("t", "search");
+      queryParams.append(
+        "q",
+        `${params.query} S${params.season.toString().padStart(2, "0")}`,
+      );
+      break;
   }
 
   return queryParams.toString();
