@@ -1,3 +1,15 @@
+import { getReqEnvVariable } from "./loadenv.ts";
+
+const JACKETT_URL = getReqEnvVariable("JACKETT_URL");
+const JACKETT_API_KEY = getReqEnvVariable("JACKETT_API_KEY");
+
+if (!JACKETT_URL) {
+  throw new Error("JACKETT_URL environment variable is required.");
+}
+if (!JACKETT_API_KEY) {
+  throw new Error("JACKETT_API_KEY environment variable is required.");
+}
+
 export interface JackettResult {
   Title: string;
   Tracker: string;
@@ -13,16 +25,6 @@ export interface JackettResult {
 export async function fetchJackettResults(
   query: string,
 ): Promise<JackettResult[]> {
-  const JACKETT_URL = process.env.JACKETT_URL;
-  const JACKETT_API_KEY = process.env.JACKETT_API_KEY;
-
-  if (!JACKETT_URL) {
-    throw new Error("JACKETT_URL environment variable is required.");
-  }
-  if (!JACKETT_API_KEY) {
-    throw new Error("JACKETT_API_KEY environment variable is required.");
-  }
-
   const url = `${JACKETT_URL}/api/v2.0/indexers/all/results?apikey=${JACKETT_API_KEY}&Query=${encodeURIComponent(query)}`;
 
   try {

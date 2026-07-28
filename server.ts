@@ -1,10 +1,10 @@
-process.loadEnvFile(".env");
-
 import http from "node:http";
 import { getManifest } from "./src/manifest.ts";
 import { getMovieStream, getSeriesStream } from "./src/stream.ts";
+import { addTorrentToQbit } from "./src/qbittorrent.ts";
+import { getOptionalEnvVariable } from "./src/loadenv.ts";
 
-const PORT = process.env.PORT || 3000;
+const PORT = getOptionalEnvVariable("PORT") || 3000;
 
 // Helper to send JSON responses with CORS headers required by Stremio
 function sendJson(res: http.ServerResponse, data: unknown) {
@@ -59,6 +59,21 @@ const server = http.createServer(async (req, res) => {
 
       return sendJson(res, await getSeriesStream(seriesId, season, episode));
     }
+  }
+
+  const addTorrentMatch = url.match(/^\/add-torrent\/(.+)$/);
+  if (addTorrentMatch) {
+    const magnetUri = decodeURIComponent(addTorrentMatch[1]);
+    const success = await addTorrentToQbit(magnetUri);
+
+    if (success) {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("Successfully added to qBittorrent.");
+    } else {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("Failed to add to qBittorrent.");
+    }
+    return;
   }
 
   return send404(res);

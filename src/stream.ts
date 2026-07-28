@@ -1,4 +1,5 @@
 import { fetchJackettResults, type JackettResult } from "./jackett.ts";
+import { getReqEnvVariable } from "./loadenv.ts";
 
 interface Subtitle {
   id: string;
@@ -56,36 +57,22 @@ interface StreamResponse {
   streams: Stream[];
 }
 
-function mapJackettToStream(result: JackettResult): Stream | null {
-  let infoHash = result.InfoHash;
+const PUBLIC_URL = getReqEnvVariable("PUBLIC_URL");
 
-  if (!infoHash && result.MagnetUri) {
-    const match = result.MagnetUri.match(/urn:btih:([a-zA-Z0-9]+)/i);
-    if (match) {
-      infoHash = match[1].toLowerCase();
-    }
-  }
+function mapJackettToStream(result: JackettResult): Stream | null {
+  // Fallback to Link if MagnetUri is not provided by the tracker
+  const magnetOrUrl = result.MagnetUri || result.Link;
+
+  if (!magnetOrUrl) return null;
 
   const sizeGB = (result.Size / 1024 / 1024 / 1024).toFixed(2);
   const titleStr = `${result.Title}\n👤 ${result.Seeders} Seeders | 💾 ${sizeGB} GB`;
 
-  if (infoHash) {
-    return {
-      name: `Jackett - ${result.Tracker}`,
-      title: titleStr,
-      infoHash,
-    } as TorrentStream;
-  }
-
-  if (result.Link && result.Link.startsWith("http")) {
-    return {
-      name: `Jackett - ${result.Tracker}`,
-      title: titleStr,
-      url: result.Link,
-    } as UrlStream;
-  }
-
-  return null;
+  return {
+    name: `Qbit - ${result.Tracker}`,
+    title: titleStr,
+    url: `${PUBLIC_URL}/add-torrent/${encodeURIComponent(magnetOrUrl)}`,
+  } as UrlStream;
 }
 
 export async function getMovieStream(id: string): Promise<StreamResponse> {
