@@ -248,14 +248,8 @@ export async function getSeriesStream(
       fetchPlans = [
         {
           params: { type: "series_text", query: title, season, episode },
-          jackettFilter: (title) => {
-            const decision = isDefinitelyWrongEpisode(title, season, episode);
-            console.log(
-              `Filtering title: ${title} for season ${season}, episode ${episode}`,
-              `Decision: ${decision}`,
-            );
-            return decision;
-          },
+          jackettFilter: (title) =>
+            isDefinitelyWrongEpisode(title, season, episode),
         },
         {
           params: { type: "series_season_text", query: title, season },
