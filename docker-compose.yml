@@ -1,0 +1,65 @@
+services:
+  jackett:
+    image: lscr.io/linuxserver/jackett:0.24.1392
+    container_name: jackett
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - jackett_data:/config
+      # - /path/to/blackhole:/downloads
+    ports:
+      - "9117:9117"
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:5.1.4
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
+    volumes:
+      - qbittorrent_data:/config
+      # Mount the shared media_downloads volume to /downloads (read-write)
+      - media_downloads:/downloads
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+
+  addon-server:
+    # Use image built from Github Actions or build locally
+    # image: ghcr.io/your-username/stremio-addon-persisted-media:latest 
+    build: .
+    container_name: stremio-addon
+    environment:
+      - PORT=7000
+      - PUBLIC_URL=http://localhost:7000  # Change this to your public IP/Domain in production
+      - QBITTORRENT_URL=http://qbittorrent:8080
+      - JACKETT_URL=http://jackett:9117
+      - JACKETT_API_KEY=your_jackett_api_key_here
+      - JACKETT_SEARCH_TYPE=text # 'imdb' or 'text'
+      - DOWNLOAD_PATH=/downloads
+      - DB_PATH=/app/data/torrents.db
+    volumes:
+      # Mount the same media_downloads volume to /downloads, but read-only!
+      - media_downloads:/downloads:ro
+      # Mount a local directory for the database to persist across container restarts
+      - addon_data:/app/data
+    ports:
+      - "7000:7000"
+    restart: unless-stopped
+    depends_on:
+      - jackett
+      - qbittorrent
+
+volumes:
+  jackett_data:
+  qbittorrent_data:
+  media_downloads:
+  addon_data:

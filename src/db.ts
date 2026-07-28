@@ -1,6 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
+import { getOptionalEnvVariable } from "./loadenv.ts";
 
-const db = new DatabaseSync("torrents.db");
+const dbPath = getOptionalEnvVariable("DB_PATH") || "torrents.db";
+const db = new DatabaseSync(dbPath);
 
 // Initialize tables
 db.exec(`
