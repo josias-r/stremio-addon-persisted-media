@@ -1,25 +1,82 @@
 import http from "node:http";
-
-// Native TypeScript interfaces directly in Node!
-interface ResponseData {
-  status: string;
-  message: string;
-  timestamp: string;
-}
+import { getManifest } from "./src/manifest.ts";
+import { getMovieMeta, getSeriesMeta, type ContentType } from "./src/meta.ts";
+import { getMovieStream, getSeriesStream } from "./src/stream.ts";
 
 const PORT = process.env.PORT || 3000;
 
-const server = http.createServer((req, res) => {
-  const data: ResponseData = {
-    status: "success",
-    message: "Zero-dependency TypeScript in Node.js!",
-    timestamp: new Date().toISOString(),
-  };
-
-  res.writeHead(200, { "Content-Type": "application/json" });
+// Helper to send JSON responses with CORS headers required by Stremio
+function sendJson(res: http.ServerResponse, data: unknown) {
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "*",
+  });
   res.end(JSON.stringify(data));
+}
+
+// Helper to send 404 Error with CORS headers
+function send404(res: http.ServerResponse) {
+  res.writeHead(404, {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "*",
+  });
+  res.end("Not Found");
+}
+
+const server = http.createServer(async (req, res) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    res.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "*",
+    });
+    res.end();
+    return;
+  }
+
+  const url = req.url || "/";
+  console.log(`[${req.method}] ${url}`);
+
+  // Endpoint: Manifest
+  if (url === "/manifest.json") {
+    return sendJson(res, getManifest());
+  }
+
+  const metaMatch = url.match(/^\/meta\/(movie|series)\/([^/]+)\.json$/);
+  if (metaMatch) {
+    const [, type, idEncoded] = metaMatch;
+    const id = decodeURIComponent(idEncoded);
+    if (type === "movie") {
+      return sendJson(res, await getMovieMeta(id));
+    } else {
+      return sendJson(res, await getSeriesMeta(id));
+    }
+  }
+
+  const streamMatch = url.match(/^\/stream\/(movie|series)\/([^/]+)\.json$/);
+  if (streamMatch) {
+    const [, type, idEncoded] = streamMatch;
+    const decodedId = decodeURIComponent(idEncoded);
+
+    if (type === "movie") {
+      return sendJson(res, await getMovieStream(decodedId));
+    } else {
+      // Series stream IDs typically look like tt1234567:1:1 (id:season:episode)
+      const [seriesId, seasonStr, episodeStr] = decodedId.split(":");
+      const season = parseInt(seasonStr || "1", 10);
+      const episode = parseInt(episodeStr || "1", 10);
+
+      return sendJson(res, await getSeriesStream(seriesId, season, episode));
+    }
+  }
+
+  return send404(res);
 });
 
 server.listen(PORT, () => {
-  console.log(`Server is running natively at http://localhost:${PORT}`);
+  console.log(
+    `Modular Stremio Add-on server is running at http://localhost:${PORT}`,
+  );
+  console.log(`Manifest URL: http://localhost:${PORT}/manifest.json`);
 });
