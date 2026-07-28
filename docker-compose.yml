@@ -33,9 +33,7 @@ services:
     restart: unless-stopped
 
   addon-server:
-    # Use image built from Github Actions or build locally
-    # image: ghcr.io/your-username/stremio-addon-persisted-media:latest 
-    build: .
+    image: ghcr.io/josias-r/stremio-addon-persisted-media:latest 
     container_name: stremio-addon
     environment:
       - PORT=7000
