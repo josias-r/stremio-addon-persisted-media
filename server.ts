@@ -1,8 +1,9 @@
 import http from "node:http";
 import { getManifest } from "./src/manifest.ts";
 import { getMovieStream, getSeriesStream } from "./src/stream.ts";
-import { addTorrentToQbit } from "./src/qbittorrent.ts";
 import { getOptionalEnvVariable } from "./src/loadenv.ts";
+import { handleStreamFile } from "./src/stream-file.ts";
+import { handleTriggerDownload } from "./src/trigger-download.ts";
 
 const PORT = getOptionalEnvVariable("PORT") || 3000;
 
@@ -36,8 +37,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const url = req.url || "/";
-  console.log(`[${req.method}] ${url}`);
+  const urlObj = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
+  const url = urlObj.pathname;
+  console.debug(`[${req.method}] ${url}`);
 
   // Endpoint: Manifest
   if (url === "/manifest.json") {
@@ -61,18 +66,18 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const addTorrentMatch = url.match(/^\/add-torrent\/(.+)$/);
-  if (addTorrentMatch) {
-    const magnetUri = decodeURIComponent(addTorrentMatch[1]);
-    const success = await addTorrentToQbit(magnetUri);
+  const triggerMatch = url.match(/^\/trigger-download\/([^/]+)\/([^/]+)$/);
+  if (triggerMatch) {
+    await handleTriggerDownload(res, urlObj, triggerMatch);
+    return;
+  }
 
-    if (success) {
-      res.writeHead(200, { "Content-Type": "text/plain" });
-      res.end("Successfully added to qBittorrent.");
-    } else {
-      res.writeHead(500, { "Content-Type": "text/plain" });
-      res.end("Failed to add to qBittorrent.");
-    }
+  const streamFileMatch = url.match(/^\/stream-file\/([^/]+)$/);
+  if (streamFileMatch) {
+    const filePathParam = urlObj.searchParams.get("filePath");
+    if (!filePathParam) return send404(res);
+
+    handleStreamFile(req, res, filePathParam);
     return;
   }
 
