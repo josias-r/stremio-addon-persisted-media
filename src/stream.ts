@@ -7,6 +7,7 @@ import {
   type TorrentRecord,
 } from "./db.ts";
 import { getTorrentFiles } from "./qbittorrent.ts";
+import { isDefinitelyWrongEpisode } from "./parse-episode.ts";
 
 interface Subtitle {
   id: string;
@@ -102,6 +103,7 @@ const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".webm", ".mov"];
 
 async function getLocalFileStreams(
   torrents: TorrentRecord[],
+  isDefinitelyNotWanted?: (title: string) => boolean,
 ): Promise<Stream[]> {
   const streams: Stream[] = [];
 
@@ -111,6 +113,11 @@ async function getLocalFileStreams(
     for (const file of files) {
       const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
       if (VIDEO_EXTENSIONS.includes(ext)) {
+        // Robust filtering for local files (useful for season packs)
+        if (isDefinitelyNotWanted && isDefinitelyNotWanted(file.name)) {
+          continue; // Skip files that are clearly not what we want
+        }
+
         const sizeGB = (file.size / 1024 / 1024 / 1024).toFixed(2);
         const progressPct = Math.round(file.progress * 100);
 
@@ -129,12 +136,18 @@ async function getLocalFileStreams(
 async function buildStreamResponse(
   stremioId: string,
   jackettQuery: string,
+  isDefinitelyNotWanted?: (title: string) => boolean,
 ): Promise<StreamResponse> {
   let dbTorrents = getTorrentsByStremioId(stremioId);
 
   // If no local streams exist for this specific request,
   // we fetch Jackett and see if any existing torrent hashes match, automatically linking them.
-  const results = await fetchJackettResults(jackettQuery);
+  let results = await fetchJackettResults(jackettQuery);
+
+  // Robust filtering for Jackett results
+  if (isDefinitelyNotWanted) {
+    results = results.filter((r) => !isDefinitelyNotWanted(r.Title));
+  }
 
   if (dbTorrents.length === 0) {
     let linkedNew = false;
@@ -152,7 +165,10 @@ async function buildStreamResponse(
     }
   }
 
-  const localStreams = await getLocalFileStreams(dbTorrents);
+  const localStreams = await getLocalFileStreams(
+    dbTorrents,
+    isDefinitelyNotWanted,
+  );
   const downloadedHashes = new Set(
     dbTorrents.map((t) => t.infoHash.toLowerCase()),
   );
@@ -176,5 +192,7 @@ export async function getSeriesStream(
   const stremioId = `${seriesId}:${season}:${episode}`;
   const query = `${seriesId} S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")}`;
 
-  return buildStreamResponse(stremioId, query);
+  return buildStreamResponse(stremioId, query, (title: string) =>
+    isDefinitelyWrongEpisode(title, season, episode),
+  );
 }
