@@ -5,7 +5,7 @@ export function getManifest() {
     name: "Modular Node Addon",
     description:
       "A Stremio addon using ES Modules with dynamic content and series.",
-    resources: ["meta", "stream"],
+    resources: ["stream"],
     types: ["movie", "series"],
     catalogs: [],
   };

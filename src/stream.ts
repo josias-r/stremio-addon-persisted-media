@@ -1,10 +1,12 @@
-export interface Subtitle {
+import { fetchJackettResults, type JackettResult } from "./jackett.ts";
+
+interface Subtitle {
   id: string;
   url: string;
   lang: string;
 }
 
-export interface StreamBehaviorHints {
+interface StreamBehaviorHints {
   notWebReady?: boolean;
   bingeGroup?: string;
   proxyHeaders?: {
@@ -13,7 +15,7 @@ export interface StreamBehaviorHints {
   };
 }
 
-export interface StreamBase {
+interface StreamBase {
   name?: string;
   title?: string;
   description?: string;
@@ -21,40 +23,38 @@ export interface StreamBase {
   behaviorHints?: StreamBehaviorHints;
 }
 
-export interface UrlStream extends StreamBase {
+interface UrlStream extends StreamBase {
   url: string;
 }
 
-export interface YtStream extends StreamBase {
+interface YtStream extends StreamBase {
   ytId: string;
 }
 
-export interface TorrentStream extends StreamBase {
+interface TorrentStream extends StreamBase {
   infoHash: string;
   fileIdx?: number;
   sources?: string[];
 }
 
-export interface ExternalStream extends StreamBase {
+interface ExternalStream extends StreamBase {
   externalUrl: string;
 }
 
-export interface PlayerFrameStream extends StreamBase {
+interface PlayerFrameStream extends StreamBase {
   playerFrameUrl: string;
 }
 
-export type Stream =
+type Stream =
   | UrlStream
   | YtStream
   | TorrentStream
   | ExternalStream
   | PlayerFrameStream;
 
-export interface StreamResponse {
+interface StreamResponse {
   streams: Stream[];
 }
-
-import { fetchJackettResults, type JackettResult } from "./jackett.ts";
 
 function mapJackettToStream(result: JackettResult): Stream | null {
   let infoHash = result.InfoHash;

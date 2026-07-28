@@ -2,7 +2,6 @@ process.loadEnvFile(".env");
 
 import http from "node:http";
 import { getManifest } from "./src/manifest.ts";
-import { getMovieMeta, getSeriesMeta } from "./src/meta.ts";
 import { getMovieStream, getSeriesStream } from "./src/stream.ts";
 
 const PORT = process.env.PORT || 3000;
@@ -43,17 +42,6 @@ const server = http.createServer(async (req, res) => {
   // Endpoint: Manifest
   if (url === "/manifest.json") {
     return sendJson(res, getManifest());
-  }
-
-  const metaMatch = url.match(/^\/meta\/(movie|series)\/([^/]+)\.json$/);
-  if (metaMatch) {
-    const [, type, idEncoded] = metaMatch;
-    const id = decodeURIComponent(idEncoded);
-    if (type === "movie") {
-      return sendJson(res, await getMovieMeta(id));
-    } else {
-      return sendJson(res, await getSeriesMeta(id));
-    }
   }
 
   const streamMatch = url.match(/^\/stream\/(movie|series)\/([^/]+)\.json$/);
