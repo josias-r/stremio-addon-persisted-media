@@ -1,6 +1,11 @@
 import { fetchJackettResults, type JackettResult } from "./jackett.ts";
 import { getReqEnvVariable } from "./loadenv.ts";
-import { getTorrentsByStremioId } from "./db.ts";
+import {
+  getTorrentsByStremioId,
+  getTorrentByHash,
+  linkTorrentToStremioId,
+  type TorrentRecord,
+} from "./db.ts";
 import { getTorrentFiles } from "./qbittorrent.ts";
 
 interface Subtitle {
@@ -95,8 +100,9 @@ function mapJackettToStream(
 
 const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".webm", ".mov"];
 
-async function getLocalFileStreams(stremioId: string): Promise<Stream[]> {
-  const torrents = getTorrentsByStremioId(stremioId);
+async function getLocalFileStreams(
+  torrents: TorrentRecord[],
+): Promise<Stream[]> {
   const streams: Stream[] = [];
 
   for (const torrent of torrents) {
@@ -120,19 +126,46 @@ async function getLocalFileStreams(stremioId: string): Promise<Stream[]> {
   return streams;
 }
 
-export async function getMovieStream(id: string): Promise<StreamResponse> {
-  const localStreams = await getLocalFileStreams(id);
-  const dbTorrents = getTorrentsByStremioId(id);
+async function buildStreamResponse(
+  stremioId: string,
+  jackettQuery: string,
+): Promise<StreamResponse> {
+  let dbTorrents = getTorrentsByStremioId(stremioId);
+
+  // If no local streams exist for this specific request,
+  // we fetch Jackett and see if any existing torrent hashes match, automatically linking them.
+  const results = await fetchJackettResults(jackettQuery);
+
+  if (dbTorrents.length === 0) {
+    let linkedNew = false;
+    for (const r of results) {
+      const infoHash = (
+        r.InfoHash || extractInfoHash(r.MagnetUri)
+      )?.toLowerCase();
+      if (infoHash && getTorrentByHash(infoHash)) {
+        linkTorrentToStremioId(infoHash, stremioId);
+        linkedNew = true;
+      }
+    }
+    if (linkedNew) {
+      dbTorrents = getTorrentsByStremioId(stremioId);
+    }
+  }
+
+  const localStreams = await getLocalFileStreams(dbTorrents);
   const downloadedHashes = new Set(
     dbTorrents.map((t) => t.infoHash.toLowerCase()),
   );
 
-  const results = await fetchJackettResults(id);
   const jackettStreams = results
-    .map((r) => mapJackettToStream(r, id, downloadedHashes))
+    .map((r) => mapJackettToStream(r, stremioId, downloadedHashes))
     .filter((s): s is Stream => s !== null);
 
   return { streams: [...localStreams, ...jackettStreams] };
+}
+
+export async function getMovieStream(id: string): Promise<StreamResponse> {
+  return buildStreamResponse(id, id);
 }
 
 export async function getSeriesStream(
@@ -141,18 +174,7 @@ export async function getSeriesStream(
   episode: number,
 ): Promise<StreamResponse> {
   const stremioId = `${seriesId}:${season}:${episode}`;
-  const localStreams = await getLocalFileStreams(stremioId);
-
-  const dbTorrents = getTorrentsByStremioId(stremioId);
-  const downloadedHashes = new Set(
-    dbTorrents.map((t) => t.infoHash.toLowerCase()),
-  );
-
   const query = `${seriesId} S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")}`;
-  const results = await fetchJackettResults(query);
-  const jackettStreams = results
-    .map((r) => mapJackettToStream(r, stremioId, downloadedHashes))
-    .filter((s): s is Stream => s !== null);
 
-  return { streams: [...localStreams, ...jackettStreams] };
+  return buildStreamResponse(stremioId, query);
 }

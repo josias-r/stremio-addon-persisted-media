@@ -2,18 +2,23 @@ import { DatabaseSync } from "node:sqlite";
 
 const db = new DatabaseSync("torrents.db");
 
-// Initialize table
+// Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS torrents (
     infoHash TEXT PRIMARY KEY,
-    stremioId TEXT NOT NULL,
     magnetUri TEXT NOT NULL
-  )
+  );
+
+  CREATE TABLE IF NOT EXISTS torrent_streams (
+    infoHash TEXT NOT NULL,
+    stremioId TEXT NOT NULL,
+    PRIMARY KEY (infoHash, stremioId),
+    FOREIGN KEY (infoHash) REFERENCES torrents (infoHash)
+  );
 `);
 
 export interface TorrentRecord {
   infoHash: string;
-  stremioId: string;
   magnetUri: string;
 }
 
@@ -22,20 +27,28 @@ export function addTorrent(
   stremioId: string,
   magnetUri: string,
 ) {
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO torrents (infoHash, stremioId, magnetUri) VALUES (?, ?, ?)",
+  const insertTorrent = db.prepare(
+    "INSERT OR IGNORE INTO torrents (infoHash, magnetUri) VALUES (?, ?)",
   );
-  stmt.run(infoHash, stremioId, magnetUri);
+  insertTorrent.run(infoHash, magnetUri);
+
+  linkTorrentToStremioId(infoHash, stremioId);
+}
+
+export function linkTorrentToStremioId(infoHash: string, stremioId: string) {
+  const insertLink = db.prepare(
+    "INSERT OR IGNORE INTO torrent_streams (infoHash, stremioId) VALUES (?, ?)",
+  );
+  insertLink.run(infoHash, stremioId);
 }
 
 export function getTorrentsByStremioId(stremioId: string): TorrentRecord[] {
-  // Extract base series ID if it's an episode (e.g., tt1234567:1:1 -> tt1234567)
-  const baseId = stremioId.split(":")[0];
-
-  // Find all torrents that start with the baseId
-  // This allows season packs downloaded for S01E01 to also appear for S01E02
-  const stmt = db.prepare("SELECT * FROM torrents WHERE stremioId LIKE ?");
-  return stmt.all(`${baseId}%`) as unknown as TorrentRecord[];
+  const stmt = db.prepare(`
+    SELECT t.* FROM torrents t
+    JOIN torrent_streams ts ON t.infoHash = ts.infoHash
+    WHERE ts.stremioId = ?
+  `);
+  return stmt.all(stremioId) as unknown as TorrentRecord[];
 }
 
 export function getTorrentByHash(infoHash: string): TorrentRecord | undefined {
