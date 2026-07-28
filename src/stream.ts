@@ -1,4 +1,8 @@
-import { fetchJackettResults, type JackettResult } from "./jackett.ts";
+import {
+  fetchJackettResults,
+  type JackettResult,
+  type TorznabParams,
+} from "./jackett.ts";
 import { getReqEnvVariable } from "./loadenv.ts";
 import {
   getTorrentsByStremioId,
@@ -135,14 +139,14 @@ async function getLocalFileStreams(
 
 async function buildStreamResponse(
   stremioId: string,
-  jackettQuery: string,
+  torznabParams: TorznabParams,
   isDefinitelyNotWanted?: (title: string) => boolean,
 ): Promise<StreamResponse> {
   let dbTorrents = getTorrentsByStremioId(stremioId);
 
   // If no local streams exist for this specific request,
   // we fetch Jackett and see if any existing torrent hashes match, automatically linking them.
-  let results = await fetchJackettResults(jackettQuery);
+  let results = await fetchJackettResults(torznabParams);
 
   // Robust filtering for Jackett results
   if (isDefinitelyNotWanted) {
@@ -181,7 +185,7 @@ async function buildStreamResponse(
 }
 
 export async function getMovieStream(id: string): Promise<StreamResponse> {
-  return buildStreamResponse(id, id);
+  return buildStreamResponse(id, { type: "movie", imdbId: id });
 }
 
 export async function getSeriesStream(
@@ -190,9 +194,10 @@ export async function getSeriesStream(
   episode: number,
 ): Promise<StreamResponse> {
   const stremioId = `${seriesId}:${season}:${episode}`;
-  const query = `${seriesId} S${season.toString().padStart(2, "0")}E${episode.toString().padStart(2, "0")}`;
 
-  return buildStreamResponse(stremioId, query, (title: string) =>
-    isDefinitelyWrongEpisode(title, season, episode),
+  return buildStreamResponse(
+    stremioId,
+    { type: "series", imdbId: seriesId, season, episode },
+    (title: string) => isDefinitelyWrongEpisode(title, season, episode),
   );
 }
