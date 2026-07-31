@@ -1,10 +1,10 @@
 export function getManifest() {
   return {
-    id: "org.stremio.sample.modular",
+    id: "mini-media-server.addon",
     version: "1.0.0",
-    name: "Modular Node Addon",
+    name: "Mini Media Server",
     description:
-      "A Stremio addon using ES Modules with dynamic content and series.",
+      "A tiny Stremio addon acting similar to a self-hostable debrid service. Search for torrents via Jackett, download and cache them automatically and serve them to Stremio.",
     resources: ["stream"],
     types: ["movie", "series"],
     catalogs: [],
