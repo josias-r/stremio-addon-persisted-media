@@ -9,3 +9,8 @@ node_modules
 
 # db
 torrents.db
+
+
+# Added by cargo
+
+/target
