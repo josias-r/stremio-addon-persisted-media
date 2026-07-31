@@ -1,63 +1,89 @@
+# ==============================================================================
+# MOST IMPORTANT CONFIGURATION BLOCK
+# Edit values here. They are injected into the services below using YAML aliases.
+# ==============================================================================
+x-config:
+  puid: &puid 1000
+  pgid: &pgid 1000
+  tz: &tz "Europe/London"
+  public_url: &public_url "http://please-define-public-accessible-addon-server-url"
+  qbit_user: &qbit_user "admin"
+  qbit_pass: &qbit_pass "get_from_qbittorrent_first_boot_logs"
+  jackett_api_key: &jackett_api_key "get_from_jackett_first_webui_access"
+# ==============================================================================
+
+
+# ==============================================================================
+# You probably wan't to either enable the port mappings below or set up a 
+# reverse proxy to access the services from outside the docker network.
+# ==============================================================================
+
 services:
   jackett:
     image: lscr.io/linuxserver/jackett:0.24.1392
-    container_name: jackett
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
+      PUID: *puid
+      PGID: *pgid
+      TZ: *tz
     volumes:
-      - jackett_data:/config
+      - mini_media_server_jackett_data:/config
       # - /path/to/blackhole:/downloads
-    ports:
-      - "9117:9117"
+    # ports:
+    #   - "9117:9117"
     restart: unless-stopped
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:5.1.4
-    container_name: qbittorrent
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - WEBUI_PORT=8080
-      - TORRENTING_PORT=6881
+      PUID: *puid
+      PGID: *pgid
+      TZ: *tz
+      WEBUI_PORT: 8080
+      TORRENTING_PORT: 6881
     volumes:
-      - qbittorrent_data:/config
+      - mini_media_server_qbittorrent_data:/config
       # Mount the shared media_downloads volume to /downloads (read-write)
-      - media_downloads:/downloads
-    ports:
-      - "8080:8080"
-      - "6881:6881"
-      - "6881:6881/udp"
+      - mini_media_server_downloads:/downloads
+    # ports:
+    #   - "8080:8080"
+    #   - "6881:6881"
+    #   - "6881:6881/udp"
     restart: unless-stopped
 
   addon-server:
-    image: ghcr.io/josias-r/stremio-addon-persisted-media:latest 
-    container_name: stremio-addon
+    image: ghcr.io/josias-r/stremio-addon-persisted-media:0.0.3 
     environment:
-      - PORT=7000
-      - PUBLIC_URL=http://localhost:7000  # Change this to your public IP/Domain in production
-      - QBITTORRENT_URL=http://qbittorrent:8080
-      - JACKETT_URL=http://jackett:9117
-      - JACKETT_API_KEY=your_jackett_api_key_here
-      - JACKETT_SEARCH_TYPE=text # 'imdb' or 'text'
-      - DOWNLOAD_PATH=/downloads
-      - DB_PATH=/app/data/torrents.db
+      PORT: 7000
+      PUBLIC_URL: *public_url
+      QBITTORRENT_URL: "http://qbittorrent:8080"
+      QBITTORRENT_USERNAME: *qbit_user
+      QBITTORRENT_PASSWORD: *qbit_pass
+      JACKETT_URL: "http://jackett:9117"
+      JACKETT_API_KEY: *jackett_api_key
+      # whether torznab strict query is used (must be supported by the indexer used) or a text search (more flexible, but less accurate)
+      JACKETT_SEARCH_TYPE: "text" # 'imdb' or 'text'
+      DOWNLOAD_PATH: "/downloads"
+      DB_PATH: "/app/data/torrents.db"
     volumes:
       # Mount the same media_downloads volume to /downloads, but read-only!
-      - media_downloads:/downloads:ro
+      - mini_media_server_downloads:/downloads:ro
       # Mount a local directory for the database to persist across container restarts
-      - addon_data:/app/data
-    ports:
-      - "7000:7000"
+      - mini_media_server_addon_data:/app/data
+    # ports:
+    #   - "7000:7000"
     restart: unless-stopped
     depends_on:
       - jackett
       - qbittorrent
 
 volumes:
-  jackett_data:
-  qbittorrent_data:
-  media_downloads:
-  addon_data:
+  mini_media_server_jackett_data:
+  mini_media_server_qbittorrent_data:
+  mini_media_server_addon_data:
+  # example with external mounted hdd
+  mini_media_server_downloads:
+    driver: local
+    driver_opts:
+      type: none
+      device: /mnt/ext_hdd/mini-media-server/downloads
+      o: bind
