@@ -1,23 +1,35 @@
-FROM node:23-alpine
-
+FROM lukemathwalker/cargo-chef:latest-rust-1.80 AS chef
 WORKDIR /app
 
-# Enable corepack and install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-# Copy package files and install dependencies
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
-
-# Copy application source code
+FROM chef AS planner
 COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder 
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
+RUN cargo chef cook --release --recipe-path recipe.json
+# Build application
+COPY . .
+RUN cargo build --release --bin mini-media-server-addon
+
+# Runtime stage
+FROM debian:bookworm-slim
+WORKDIR /app
+
+# Install ca-certificates for reqwest to make HTTPS requests
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Copy the compiled binary and placeholder video
+COPY --from=builder /app/target/release/mini-media-server-addon /app/mini-media-server-addon
+COPY placeholder.mp4 /app/placeholder.mp4
 
 # Environment variables
 ENV PORT=7000
-ENV DB_PATH=/app/data/torrents.db
 
 # Expose port
 EXPOSE 7000
 
 # Start server
-CMD ["pnpm", "start"]
+CMD ["/app/mini-media-server-addon"]

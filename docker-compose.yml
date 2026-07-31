@@ -63,11 +63,10 @@ services:
       # whether torznab strict query is used (must be supported by the indexer used) or a text search (more flexible, but less accurate)
       JACKETT_SEARCH_TYPE: "text" # 'imdb' or 'text'
       DOWNLOAD_PATH: "/downloads"
-      DB_PATH: "/app/data/torrents.db"
     volumes:
       # Mount the same media_downloads volume to /downloads, but read-only!
       - mini_media_server_downloads:/downloads:ro
-      # Mount a local directory for the database to persist across container restarts
+      # UNUSED ATM - WILL BE USED TO PERSIST RUNTIME CONFIGS-SIMPEL DATA SOON
       - mini_media_server_addon_data:/app/data
     # ports:
     #   - "7000:7000"
@@ -79,6 +78,7 @@ services:
 volumes:
   mini_media_server_jackett_data:
   mini_media_server_qbittorrent_data:
+  # UNUSED ATM - WILL BE USED TO PERSIST RUNTIME CONFIGS-SIMPEL DATA SOON
   mini_media_server_addon_data:
   # example with external mounted hdd
   mini_media_server_downloads:
