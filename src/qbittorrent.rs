@@ -11,10 +11,6 @@ pub struct QbitClient {
 #[derive(Debug, Deserialize, Clone)]
 pub struct QbitTorrent {
     pub hash: String,
-    pub name: String,
-    pub size: u64,
-    pub progress: f64,
-    pub state: String,
     pub tags: String,
 }
 

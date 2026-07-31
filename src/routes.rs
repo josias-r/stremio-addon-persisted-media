@@ -29,10 +29,10 @@ pub struct AppState {
 pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/manifest.json", get(manifest))
-        .route("/stream/movie/:id", get(movie_stream))
-        .route("/stream/series/:id", get(series_stream))
-        .route("/trigger-download/:stremio_id/:info_hash", get(trigger_download))
-        .route("/stream-file/:info_hash", get(stream_file))
+        .route("/stream/movie/{id}", get(movie_stream))
+        .route("/stream/series/{id}", get(series_stream))
+        .route("/trigger-download/{stremio_id}/{info_hash}", get(trigger_download))
+        .route("/stream-file/{info_hash}", get(stream_file))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -131,7 +131,7 @@ async fn build_stream_response(
     }
 
     // Get torrents tagged with this stremio_id
-    let mut tagged_torrents = state.qbit.get_torrents_by_tag(stremio_id).await;
+    let tagged_torrents = state.qbit.get_torrents_by_tag(stremio_id).await;
     
     // Automatically link Jackett results that are already in qBittorrent but not tagged yet (legacy support)
     // Actually, in the Rust rewrite we only rely on tags, but to be robust, if a Jackett hash is in qbit, it will be added.

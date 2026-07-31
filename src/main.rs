@@ -12,13 +12,10 @@ use log::info;
 
 #[tokio::main]
 async fn main() {
-    // Initialize env_logger. Will read RUST_LOG env var or default to info
-    if std::env::var("RUST_LOG").is_err() {
-        unsafe {
-            std::env::set_var("RUST_LOG", "info,mini_media_server_addon=debug");
-        }
-    }
-    env_logger::init();
+    // Initialize env_logger with a default filter if RUST_LOG is not set
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,mini_media_server_addon=debug")
+    ).init();
     
     let config = config::Config::load();
     let qbit = qbittorrent::QbitClient::new(config.clone());
