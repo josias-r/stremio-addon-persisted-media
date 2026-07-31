@@ -183,11 +183,7 @@ async fn build_stream_response(
         }
         let magnet_or_url = magnet_or_url.unwrap();
         
-        let info_hash = r.info_hash.clone();
-        if info_hash.is_none() {
-            continue;
-        }
-        let info_hash = info_hash.unwrap();
+        let info_hash = r.info_hash.clone().unwrap_or_else(|| "unknown".to_string());
         let is_downloading = downloaded_hashes.contains(&info_hash.to_lowercase());
         
         let prefix = if is_downloading { "[Downloading/Downloaded]\n" } else { "" };

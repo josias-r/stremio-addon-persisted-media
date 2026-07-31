@@ -126,6 +126,7 @@ pub async fn fetch_jackett_results(
         Ok(r) => r,
         Err(e) => {
             error!("Failed to parse Jackett XML: {}", e);
+            error!("Raw XML was: {}", xml);
             return vec![];
         }
     };
@@ -133,6 +134,9 @@ pub async fn fetch_jackett_results(
     let mut results = Vec::new();
 
     if let Some(channel) = rss.channel {
+        if channel.items.is_empty() {
+            debug!("Jackett returned a channel, but no items. Raw XML: {}", xml);
+        }
         for item in channel.items {
             let title = item.title.unwrap_or_else(|| "Unknown".to_string());
             let size = item.size.unwrap_or(0);
@@ -143,7 +147,7 @@ pub async fn fetch_jackett_results(
                 if url.starts_with("magnet:") {
                     Some(url)
                 } else {
-                    link.clone()
+                    link.clone().or(Some(url))
                 }
             } else {
                 link.clone()
@@ -158,6 +162,19 @@ pub async fn fetch_jackett_results(
                         seeders = value.parse().unwrap_or(0);
                     } else if name == "infohash" {
                         info_hash = Some(value);
+                    }
+                }
+            }
+
+            // Fallback: Try to extract info_hash from magnet_uri if missing
+            if info_hash.is_none() {
+                if let Some(ref magnet) = magnet_uri {
+                    if magnet.starts_with("magnet:") {
+                        if let Some(start) = magnet.find("urn:btih:") {
+                            let hash_part = &magnet[start + 9..];
+                            let end = hash_part.find('&').unwrap_or(hash_part.len());
+                            info_hash = Some(hash_part[..end].to_string());
+                        }
                     }
                 }
             }
@@ -183,6 +200,9 @@ pub async fn fetch_jackett_results(
                 });
             }
         }
+        debug!("Jackett XML parsed successfully. Found {} items.", results.len());
+    } else {
+        debug!("Jackett XML did not contain a <channel>. Raw XML: {}", xml);
     }
 
     results.sort_by(|a, b| b.seeders.cmp(&a.seeders));
