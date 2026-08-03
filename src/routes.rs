@@ -145,7 +145,8 @@ async fn build_stream_response(
         }
     }
 
-    let tagged_torrents = state.qbit.get_torrents_by_tag(stremio_id).await;
+    let base_id = stremio_id.split(':').next().unwrap_or(stremio_id);
+    let tagged_torrents = state.qbit.get_torrents_by_tag(base_id).await;
     let downloaded_hashes: HashSet<String> = tagged_torrents.iter().map(|t| t.hash.to_lowercase()).collect();
     
     let video_extensions = [".mp4", ".mkv", ".avi", ".webm", ".mov"];
@@ -185,12 +186,30 @@ async fn build_stream_response(
         }
 
         let mut best_idx = 0;
-        let mut min_distance = usize::MAX;
+        let mut best_score = (0, 0); // (token_matches, size)
         
+        let expected_tokens: Vec<&str> = expected_title_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .collect();
+
         for (i, (_, file)) in valid_files.iter().enumerate() {
-            let dist = levenshtein(&file.name.to_lowercase(), &expected_title_lower);
-            if dist < min_distance {
-                min_distance = dist;
+            let filename_lower = file.name.to_lowercase();
+            let filename_tokens: HashSet<&str> = filename_lower
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .collect();
+                
+            let mut score = 0;
+            for token in &expected_tokens {
+                if filename_tokens.contains(token) {
+                    score += 1;
+                }
+            }
+            
+            let file_score = (score, file.size);
+            if file_score > best_score {
+                best_score = file_score;
                 best_idx = i;
             }
         }
@@ -265,8 +284,9 @@ async fn trigger_download(
     Query(params): Query<HashMap<String, String>>,
     req: Request,
 ) -> Response {
+    let base_id = stremio_id.split(':').next().unwrap_or(&stremio_id);
     if let Some(magnet) = params.get("magnet") {
-        state.qbit.add_torrent(magnet, &stremio_id).await;
+        state.qbit.add_torrent(magnet, base_id).await;
     }
     
     let mut files = vec![];
@@ -343,12 +363,30 @@ async fn trigger_download(
     }
     
     let mut best_idx = 0;
-    let mut min_distance = usize::MAX;
+    let mut best_score = (0, 0);
     
+    let expected_tokens: Vec<&str> = expected_title_lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .collect();
+
     for (i, (_, file)) in valid_files.iter().enumerate() {
-        let dist = levenshtein(&file.name.to_lowercase(), &expected_title_lower);
-        if dist < min_distance {
-            min_distance = dist;
+        let filename_lower = file.name.to_lowercase();
+        let filename_tokens: HashSet<&str> = filename_lower
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .collect();
+            
+        let mut score = 0;
+        for token in &expected_tokens {
+            if filename_tokens.contains(token) {
+                score += 1;
+            }
+        }
+        
+        let file_score = (score, file.size);
+        if file_score > best_score {
+            best_score = file_score;
             best_idx = i;
         }
     }
