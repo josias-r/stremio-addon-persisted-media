@@ -5,6 +5,8 @@ mod cinemeta;
 mod jackett;
 mod parser;
 mod routes;
+mod matcher;
+mod stream_builder;
 
 use std::sync::Arc;
 use reqwest::Client;

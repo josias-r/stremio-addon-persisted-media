@@ -19,6 +19,7 @@ pub struct QbitFile {
     pub name: String,
     pub size: u64,
     pub progress: f64,
+    pub priority: u8,
 }
 
 impl QbitClient {
