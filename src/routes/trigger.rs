@@ -24,11 +24,13 @@ pub async fn trigger_download(
         if !files.is_empty() {
             break;
         }
+        log::debug!("Torrent files not yet available for {}, waiting...", info_hash);
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     
     let placeholder = ServeFile::new(std::path::Path::new("placeholder.mp4"));
     if files.is_empty() {
+        log::debug!("Fallbacking to placeholder for {}", info_hash);
         return placeholder.oneshot(req).await.unwrap().into_response();
     }
     
