@@ -7,7 +7,7 @@ use crate::parser::{is_definitely_not_full_season, is_definitely_wrong_episode};
 
 use axum::{
     extract::{Path, Query, State, Request},
-    response::{IntoResponse, Json, Response},
+    response::{IntoResponse, Json, Response, Redirect},
     routing::get,
     Router,
 };
@@ -15,9 +15,11 @@ use reqwest::Client;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 use tower::ServiceExt;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeFile;
+use strsim::levenshtein;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -32,6 +34,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/stream/movie/{id}", get(movie_stream))
         .route("/stream/series/{id}", get(series_stream))
         .route("/trigger-download/{stremio_id}/{info_hash}", get(trigger_download))
+        .route("/play-file/{stremio_id}/{info_hash}", get(play_file))
         .route("/stream-file/{info_hash}", get(stream_file))
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -56,13 +59,16 @@ async fn movie_stream(
     let id = id_ext.replace(".json", "");
     
     let mut fetch_plans = vec![TorznabParams::MovieImdb { imdb_id: id.clone() }];
-    if state.config.jackett_search_type == "text" {
-        if let Some(title) = get_cinemeta_title(&state.http_client, "movie", &id).await {
+    
+    let mut expected_title = id.clone();
+    if let Some(title) = get_cinemeta_title(&state.http_client, "movie", &id).await {
+        expected_title = title.clone();
+        if state.config.jackett_search_type == "text" {
             fetch_plans = vec![TorznabParams::MovieText { query: title }];
         }
     }
 
-    let response = build_stream_response(&state, &id, fetch_plans, None).await;
+    let response = build_stream_response(&state, &id, fetch_plans, None, &expected_title).await;
     Json(response)
 }
 
@@ -81,8 +87,10 @@ async fn series_stream(
         TorznabParams::SeriesSeasonImdb { imdb_id: series_id.clone(), season },
     ];
 
-    if state.config.jackett_search_type == "text" {
-        if let Some(title) = get_cinemeta_title(&state.http_client, "series", &series_id).await {
+    let mut expected_title = id_str.clone();
+    if let Some(title) = get_cinemeta_title(&state.http_client, "series", &series_id).await {
+        expected_title = format!("{} S{:02}E{:02}", title, season, episode);
+        if state.config.jackett_search_type == "text" {
             fetch_plans = vec![
                 TorznabParams::SeriesText { query: title.clone(), season, episode },
                 TorznabParams::SeriesSeasonText { query: title, season },
@@ -92,8 +100,14 @@ async fn series_stream(
 
     let filter_fn = Arc::new(move |title: &str| is_definitely_wrong_episode(title, season, episode));
     
-    let response = build_stream_response(&state, &id_str, fetch_plans, Some(filter_fn)).await;
+    let response = build_stream_response(&state, &id_str, fetch_plans, Some(filter_fn), &expected_title).await;
     Json(response)
+}
+
+struct StreamItem {
+    stream: Stream,
+    category: u8,
+    seeders: u32,
 }
 
 async fn build_stream_response(
@@ -101,8 +115,9 @@ async fn build_stream_response(
     stremio_id: &str,
     fetch_plans: Vec<TorznabParams>,
     filter_fn: Option<Arc<dyn Fn(&str) -> bool + Send + Sync>>,
+    expected_title: &str,
 ) -> StreamResponse {
-    let mut streams = Vec::new();
+    let mut stream_items = Vec::new();
 
     // Deduplicate Jackett results
     let mut results = Vec::new();
@@ -130,18 +145,22 @@ async fn build_stream_response(
         }
     }
 
-    // Get torrents tagged with this stremio_id
     let tagged_torrents = state.qbit.get_torrents_by_tag(stremio_id).await;
-    
-    // Automatically link Jackett results that are already in qBittorrent but not tagged yet (legacy support)
-    // Actually, in the Rust rewrite we only rely on tags, but to be robust, if a Jackett hash is in qbit, it will be added.
     let downloaded_hashes: HashSet<String> = tagged_torrents.iter().map(|t| t.hash.to_lowercase()).collect();
-
-    // Map local files
+    
     let video_extensions = [".mp4", ".mkv", ".avi", ".webm", ".mov"];
+    let expected_title_lower = expected_title.to_lowercase();
+    
+    let mut torrents_with_metadata = HashSet::new();
+
     for torrent in &tagged_torrents {
         let files = state.qbit.get_torrent_files(&torrent.hash).await;
-        for file in files {
+        if !files.is_empty() {
+            torrents_with_metadata.insert(torrent.hash.to_lowercase());
+        }
+
+        let mut valid_files = Vec::new();
+        for (idx, file) in files.iter().enumerate() {
             let ext = file.name.rsplit('.').next().unwrap_or("").to_lowercase();
             let mut is_video = false;
             for vext in &video_extensions {
@@ -157,25 +176,47 @@ async fn build_stream_response(
                         continue;
                     }
                 }
+                valid_files.push((idx, file.clone()));
+            }
+        }
+        
+        if valid_files.is_empty() {
+            continue;
+        }
 
-                let size_gb = file.size as f64 / 1024.0 / 1024.0 / 1024.0;
-                let progress_pct = (file.progress * 100.0).round();
-                
-                streams.push(Stream {
-                    name: Some("Local Stream".to_string()),
+        let mut best_idx = 0;
+        let mut min_distance = usize::MAX;
+        
+        for (i, (_, file)) in valid_files.iter().enumerate() {
+            let dist = levenshtein(&file.name.to_lowercase(), &expected_title_lower);
+            if dist < min_distance {
+                min_distance = dist;
+                best_idx = i;
+            }
+        }
+        
+        for (i, (idx, file)) in valid_files.into_iter().enumerate() {
+            let size_gb = file.size as f64 / 1024.0 / 1024.0 / 1024.0;
+            let progress_pct = (file.progress * 100.0).round();
+            let category = if i == best_idx { 1 } else { 2 };
+            
+            stream_items.push(StreamItem {
+                stream: Stream {
+                    name: Some(if category == 1 { "Local Stream (Best Match)".to_string() } else { "Local Stream".to_string() }),
                     title: Some(format!("{}\nProgress: {}% | 💾 {:.2} GB", file.name, progress_pct, size_gb)),
-                    url: Some(format!("{}/stream-file/{}?filePath={}", state.config.public_url, torrent.hash, urlencoding::encode(&file.name))),
+                    url: Some(format!("{}/play-file/{}/{}?fileIdx={}&filePath={}", state.config.public_url, urlencoding::encode(stremio_id), torrent.hash, idx, urlencoding::encode(&file.name))),
                     description: None,
                     yt_id: None,
                     info_hash: None,
                     file_idx: None,
                     external_url: None,
-                });
-            }
+                },
+                category,
+                seeders: 0,
+            });
         }
     }
 
-    // Map Jackett streams
     for r in results {
         let magnet_or_url = r.magnet_uri.clone().or_else(|| r.link.clone());
         if magnet_or_url.is_none() {
@@ -184,29 +225,43 @@ async fn build_stream_response(
         let magnet_or_url = magnet_or_url.unwrap();
         
         let info_hash = r.info_hash.clone().unwrap_or_else(|| "unknown".to_string());
-        let is_downloading = downloaded_hashes.contains(&info_hash.to_lowercase());
         
+        if torrents_with_metadata.contains(&info_hash.to_lowercase()) {
+            continue;
+        }
+
+        let is_downloading = downloaded_hashes.contains(&info_hash.to_lowercase());
         let prefix = if is_downloading { "[Downloading/Downloaded]\n" } else { "" };
         let size_gb = r.size as f64 / 1024.0 / 1024.0 / 1024.0;
         
-        streams.push(Stream {
-            name: Some(format!("Qbit - {}", r.tracker)),
-            title: Some(format!("{}{}\n👤 {} Seeders | 💾 {:.2} GB", prefix, r.title, r.seeders, size_gb)),
-            url: Some(format!("{}/trigger-download/{}/{}?magnet={}", state.config.public_url, urlencoding::encode(stremio_id), info_hash, urlencoding::encode(&magnet_or_url))),
-            description: None,
-            yt_id: None,
-            info_hash: None,
-            file_idx: None,
-            external_url: None,
+        stream_items.push(StreamItem {
+            stream: Stream {
+                name: Some(format!("Qbit - {}", r.tracker)),
+                title: Some(format!("{}{}\n👤 {} Seeders | 💾 {:.2} GB", prefix, r.title, r.seeders, size_gb)),
+                url: Some(format!("{}/trigger-download/{}/{}?magnet={}", state.config.public_url, urlencoding::encode(stremio_id), info_hash, urlencoding::encode(&magnet_or_url))),
+                description: None,
+                yt_id: None,
+                info_hash: None,
+                file_idx: None,
+                external_url: None,
+            },
+            category: 3,
+            seeders: r.seeders,
         });
     }
 
-    StreamResponse { streams }
+    stream_items.sort_by(|a, b| {
+        a.category.cmp(&b.category).then_with(|| b.seeders.cmp(&a.seeders))
+    });
+
+    StreamResponse { 
+        streams: stream_items.into_iter().map(|item| item.stream).collect() 
+    }
 }
 
 async fn trigger_download(
     State(state): State<AppState>,
-    Path((stremio_id, _info_hash)): Path<(String, String)>,
+    Path((stremio_id, info_hash)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
     req: Request,
 ) -> Response {
@@ -214,9 +269,114 @@ async fn trigger_download(
         state.qbit.add_torrent(magnet, &stremio_id).await;
     }
     
-    // Serve a tiny dummy mp4 or empty 200 response to satisfy the player temporarily
-    let full_path = std::path::Path::new("placeholder.mp4");
-    ServeFile::new(full_path).oneshot(req).await.unwrap().into_response()
+    let mut files = vec![];
+    for _ in 0..30 {
+        files = state.qbit.get_torrent_files(&info_hash).await;
+        if !files.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    
+    if files.is_empty() {
+        let full_path = std::path::Path::new("placeholder.mp4");
+        return ServeFile::new(full_path).oneshot(req).await.unwrap().into_response();
+    }
+    
+    let video_extensions = [".mp4", ".mkv", ".avi", ".webm", ".mov"];
+    let mut expected_title = stremio_id.clone();
+    let is_series = stremio_id.contains(':');
+    let mut season = 1;
+    let mut episode = 1;
+    
+    if is_series {
+        let parts: Vec<&str> = stremio_id.split(':').collect();
+        let series_id = parts[0].to_string();
+        season = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+        episode = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(1);
+        
+        if let Some(t) = get_cinemeta_title(&state.http_client, "series", &series_id).await {
+            expected_title = format!("{} S{:02}E{:02}", t, season, episode);
+        }
+    } else {
+        if let Some(t) = get_cinemeta_title(&state.http_client, "movie", &stremio_id).await {
+            expected_title = t;
+        }
+    }
+    
+    let expected_title_lower = expected_title.to_lowercase();
+    let mut valid_files = Vec::new();
+    
+    for (idx, file) in files.iter().enumerate() {
+        let ext = file.name.rsplit('.').next().unwrap_or("").to_lowercase();
+        let mut is_video = false;
+        for vext in &video_extensions {
+            if vext.ends_with(&ext) || format!(".{}", ext) == *vext {
+                is_video = true;
+                break;
+            }
+        }
+        
+        if is_video {
+            if is_series && is_definitely_wrong_episode(&file.name, season, episode) {
+                continue;
+            }
+            valid_files.push((idx, file.clone()));
+        }
+    }
+    
+    if valid_files.is_empty() {
+        for (idx, file) in files.iter().enumerate() {
+            let ext = file.name.rsplit('.').next().unwrap_or("").to_lowercase();
+            for vext in &video_extensions {
+                if vext.ends_with(&ext) || format!(".{}", ext) == *vext {
+                    valid_files.push((idx, file.clone()));
+                    break;
+                }
+            }
+        }
+    }
+
+    if valid_files.is_empty() {
+        let full_path = std::path::Path::new("placeholder.mp4");
+        return ServeFile::new(full_path).oneshot(req).await.unwrap().into_response();
+    }
+    
+    let mut best_idx = 0;
+    let mut min_distance = usize::MAX;
+    
+    for (i, (_, file)) in valid_files.iter().enumerate() {
+        let dist = levenshtein(&file.name.to_lowercase(), &expected_title_lower);
+        if dist < min_distance {
+            min_distance = dist;
+            best_idx = i;
+        }
+    }
+    
+    let (chosen_idx, chosen_file) = valid_files[best_idx].clone();
+    
+    let all_ids: Vec<usize> = (0..files.len()).collect();
+    state.qbit.set_file_priorities(&info_hash, &all_ids, 0).await;
+    state.qbit.set_file_priorities(&info_hash, &[chosen_idx], 1).await;
+    
+    let redirect_url = format!("{}/stream-file/{}?filePath={}", state.config.public_url, info_hash, urlencoding::encode(&chosen_file.name));
+    Redirect::temporary(&redirect_url).into_response()
+}
+
+async fn play_file(
+    State(state): State<AppState>,
+    Path((_stremio_id, info_hash)): Path<(String, String)>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    if let Some(idx_str) = params.get("fileIdx") {
+        if let Ok(idx) = idx_str.parse::<usize>() {
+            state.qbit.set_file_priorities(&info_hash, &[idx], 1).await;
+        }
+    }
+    
+    let file_path = params.get("filePath").unwrap_or(&String::new()).clone();
+    let redirect_url = format!("{}/stream-file/{}?filePath={}", state.config.public_url, info_hash, urlencoding::encode(&file_path));
+    Redirect::temporary(&redirect_url).into_response()
 }
 
 async fn stream_file(

@@ -159,4 +159,41 @@ impl QbitClient {
             }
         }
     }
+
+    pub async fn set_file_priorities(&self, hash: &str, file_ids: &[usize], priority: u8) -> bool {
+        if file_ids.is_empty() {
+            return true;
+        }
+        
+        let sid = match self.get_session_cookie().await {
+            Some(s) => s,
+            None => return false,
+        };
+
+        let id_str = file_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join("|");
+        debug!("Setting priority {} for files {} in torrent {}", priority, id_str, hash);
+        
+        let form = multipart::Form::new()
+            .text("hash", hash.to_string())
+            .text("id", id_str)
+            .text("priority", priority.to_string());
+
+        let url = format!("{}/api/v2/torrents/filePrio", self.config.qbittorrent_url);
+        match self.client.post(&url)
+            .header("Cookie", sid)
+            .multipart(form)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => true,
+            Ok(res) => {
+                error!("Failed to set file priorities, status: {}", res.status());
+                false
+            }
+            Err(e) => {
+                error!("Error setting file priorities: {}", e);
+                false
+            }
+        }
+    }
 }
