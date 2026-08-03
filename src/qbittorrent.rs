@@ -73,7 +73,9 @@ impl QbitClient {
         debug!("Adding torrent to qBittorrent with tag: {}", tag);
         let form = multipart::Form::new()
             .text("urls", magnet_uri.to_string())
-            .text("tags", tag.to_string());
+            .text("tags", tag.to_string())
+            .text("sequentialDownload", "true")
+            .text("firstLastPiecePrio", "true");
 
         let url = format!("{}/api/v2/torrents/add", self.config.qbittorrent_url);
         match self.client.post(&url)
