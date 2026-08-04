@@ -19,6 +19,10 @@ pub fn base_layout(title: &str, subtitle: &str, content: Markup) -> Markup {
                         --text-muted: #94a3b8;
                         --border: #334155;
                     }
+
+                    *, *::before, *::after {
+                        box-sizing: border-box;
+                    }
                     
                     body { 
                         font-family: 'Inter', system-ui, -apple-system, sans-serif; 
@@ -137,6 +141,7 @@ pub fn base_layout(title: &str, subtitle: &str, content: Markup) -> Markup {
                         background: var(--bg); 
                         color: var(--text); 
                         margin-bottom: 1rem;
+                        font-size: 16px;
                     }
                     
                     @keyframes fadeIn {
