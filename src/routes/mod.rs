@@ -4,6 +4,7 @@ pub mod series;
 pub mod trigger;
 pub mod play;
 pub mod stream;
+pub mod home;
 
 use crate::config::Config;
 use crate::qbittorrent::QbitClient;
@@ -22,6 +23,7 @@ pub struct AppState {
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(home::home))
         .route("/manifest.json", get(manifest::manifest))
         .route("/stream/movie/{id}", get(movie::movie_stream))
         .route("/stream/series/{id}", get(series::series_stream))
