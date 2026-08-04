@@ -2,10 +2,13 @@ use crate::config::Config;
 use log::{debug, error};
 use reqwest::{Client, multipart};
 use serde::Deserialize;
+use tokio::sync::RwLock;
+use std::time::{Instant, Duration};
 
 pub struct QbitClient {
     client: Client,
     config: Config,
+    session_cookie: RwLock<Option<(String, Instant)>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -27,10 +30,21 @@ impl QbitClient {
         Self {
             client: Client::builder().build().unwrap(),
             config,
+            session_cookie: RwLock::new(None),
         }
     }
 
     async fn get_session_cookie(&self) -> Option<String> {
+        {
+            let cache = self.session_cookie.read().await;
+            if let Some((cookie, expiry)) = &*cache {
+                if Instant::now() < *expiry {
+                    debug!("Using cached qBittorrent session cookie");
+                    return Some(cookie.clone());
+                }
+            }
+        }
+
         let params = [
             ("username", &self.config.qbittorrent_username),
             ("password", &self.config.qbittorrent_password),
@@ -51,6 +65,32 @@ impl QbitClient {
                 if let Some(cookie) = r.headers().get("set-cookie") {
                     let cookie_str = cookie.to_str().unwrap_or("").to_string();
                     let sid = cookie_str.split(';').next().unwrap_or("").to_string();
+                    
+                    let mut duration_secs = 3600;
+                    for part in cookie_str.split(';') {
+                        let part = part.trim();
+                        if part.to_lowercase().starts_with("max-age=") {
+                            if let Ok(secs) = part[8..].parse::<u64>() {
+                                duration_secs = secs;
+                            }
+                        } else if part.to_lowercase().starts_with("expires=") {
+                            let date_str = &part[8..];
+                            // Try parsing standard HTTP date variant with hyphens or spaces
+                            let clean_date = date_str.replace("-", " ");
+                            if let Ok(parsed) = chrono::DateTime::parse_from_rfc2822(&clean_date) {
+                                let now = chrono::Utc::now();
+                                let diff = parsed.with_timezone(&chrono::Utc).signed_duration_since(now).num_seconds();
+                                if diff > 0 {
+                                    duration_secs = diff as u64;
+                                }
+                            }
+                        }
+                    }
+                    
+                    debug!("Caching new qBittorrent session cookie for {} seconds", duration_secs);
+
+                    let mut cache = self.session_cookie.write().await;
+                    *cache = Some((sid.clone(), Instant::now() + Duration::from_secs(duration_secs)));
                     Some(sid)
                 } else {
                     error!("No cookie returned from qBittorrent login, status: {}", status);
