@@ -44,6 +44,7 @@ pub async fn trigger_download(
         let all_ids: Vec<usize> = (0..files.len()).collect();
         state.qbit.set_file_priorities(&info_hash, &all_ids, 0).await;
         state.qbit.set_file_priorities(&info_hash, &[chosen_idx], 1).await;
+        state.qbit.resume_torrent(&info_hash).await;
         
         let redirect_url = format!("{}/stream-file/{}?filePath={}", state.config.public_url, info_hash, urlencoding::encode(&chosen_file.name));
         Redirect::temporary(&redirect_url).into_response()

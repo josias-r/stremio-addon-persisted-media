@@ -199,4 +199,31 @@ impl QbitClient {
             }
         }
     }
+
+    pub async fn resume_torrent(&self, hash: &str) -> bool {
+        let sid = match self.get_session_cookie().await {
+            Some(s) => s,
+            None => return false,
+        };
+
+        debug!("Resuming torrent {}", hash);
+        let params = [("hashes", hash)];
+        let url = format!("{}/api/v2/torrents/resume", self.config.qbittorrent_url);
+        match self.client.post(&url)
+            .header("Cookie", sid)
+            .form(&params)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => true,
+            Ok(res) => {
+                error!("Failed to resume torrent, status: {}", res.status());
+                false
+            }
+            Err(e) => {
+                error!("Error resuming torrent: {}", e);
+                false
+            }
+        }
+    }
 }

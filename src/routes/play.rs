@@ -10,6 +10,7 @@ pub async fn play_file(
     if let Some(idx_str) = params.get("fileIdx") {
         if let Ok(idx) = idx_str.parse::<usize>() {
             state.qbit.set_file_priorities(&info_hash, &[idx], 1).await;
+            state.qbit.resume_torrent(&info_hash).await;
         }
     }
     
