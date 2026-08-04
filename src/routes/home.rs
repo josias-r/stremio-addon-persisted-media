@@ -61,7 +61,7 @@ pub async fn home(State(state): State<AppState>) -> impl IntoResponse {
 
         div class="section" {
             h2 { "Installation" }
-            div class="card" style="text-align: center;" {
+            div class="card" style="text-align: center; margin-bottom: 2rem;" {
                 p { "Paste the API key the admin provided you here:" }
                 input type="text" id="apiKeyInput" class="input-field" placeholder="Enter API Key..." style="width: 100%;" oninput="updateManifestUrl()" {}
                 
@@ -70,6 +70,18 @@ pub async fn home(State(state): State<AppState>) -> impl IntoResponse {
                 }
                 
                 button class="btn" onclick="copyToClipboard()" { "Copy URL to Clipboard" }
+            }
+
+            div class="card" {
+                h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.2rem; color: var(--text);" { "How to connect:" }
+                ol style="margin: 0; padding-left: 1.5rem; color: var(--text-muted); line-height: 1.8;" {
+                    li { "Get your API key from the admin (it looks something like " code style="background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em;" { "550e8400-e29b-41d4-a716-446655440000" } ")." }
+                    li { "Paste it in the box above, then press " strong style="color: var(--text);" { "Copy URL to Clipboard" } "." }
+                    li { "Download one of the compatible clients below." }
+                    li { "Open your client, go to " strong style="color: var(--text);" { "Settings ➔ Addons" } "." }
+                    li { "Paste the copied Addon URL (it should end with " code style="background: rgba(255,255,255,0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.9em;" { "/manifest.json" } ") and click install." }
+                    li { "Browse movies or shows in the client and stream via the options provided by this addon! 🍿🎉" }
+                }
             }
         }
 
