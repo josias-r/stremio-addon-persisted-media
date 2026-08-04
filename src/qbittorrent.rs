@@ -248,7 +248,7 @@ impl QbitClient {
 
         debug!("Resuming torrent {}", hash);
         let params = [("hashes", hash)];
-        let url = format!("{}/api/v2/torrents/resume", self.config.qbittorrent_url);
+        let url = format!("{}/api/v2/torrents/start", self.config.qbittorrent_url);
         match self.client.post(&url)
             .header("Cookie", sid)
             .form(&params)
