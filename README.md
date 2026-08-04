@@ -1,63 +1,19 @@
 # Mini Media Server Addon
 
-Mini Media Server is a lightweight, self-hosted modular Stremio addon designed to act similarly to a self-hosted debrid service. It integrates with Jackett to search indexers and qBittorrent to handle fast, reliable downloads and streams directly to your client.
+The quickest, most seamless way to deploy your own self-hosted media server. This Stremio-compatible addon seamlessly integrates Jackett and qBittorrent to provide a blazing-fast, debrid-like streaming experience directly to your favorite clients.
 
-## Features
+## 🌟 Features
 
-- **Self-Hosted Debrid-like Experience:** Search, download, and stream media effortlessly.
-- **Jackett Integration:** Supports both IMDB ID and text-based search queries across various indexers and trackers.
-- **qBittorrent Backend:** Connects to qBittorrent to fetch metadata, handle robust file downloading, and manage sequential downloads for streaming.
-- **Direct Video Streaming:** Allows for streaming video files via standard HTTP range requests before the torrent is fully downloaded.
-- **Docker Ready:** A `docker-compose.yml` file is provided for quick setup, containing the Addon server, Jackett, and qBittorrent in one go.
-- **High Performance:** Written in Rust using the Axum web framework.
+- **Universal Indexer Support (Jackett):** Effortlessly connect to Jackett and configure any indexer or tracker you prefer for maximum content availability.
+- **Smart Torrent Matching:** Automatically scans available torrents, finds the highest quality releases, and intelligently matches them to your requested movies or TV shows.
+- **Direct On-the-Fly Streaming:** No need to wait for full downloads. The server instantly initiates torrents and seamlessly streams the media files directly to your client using HTTP range requests.
+- **Secure Access Control:** Protect your server using generated API keys. Control exactly who has access to your media and prevent unauthorized usage.
+- **Admin Dashboard:** A lightweight, built-in admin panel to manage users, track downloaded files, and monitor viewing history in real-time.
+- **Automated Storage Management:** Intelligently tracks viewing habits, allowing you to configure automatic deletion of media files that haven't been watched recently to save disk space.
+- **Broad Client Compatibility:** Works flawlessly with any Stremio-compatible client, including the official Stremio apps, Fusion Media Center, Harbor, and more.
 
 ## Getting Started
 
-### Prerequisites
+Ready to self-host your own debrid-like media server?
 
-- [Docker & Docker Compose](https://docs.docker.com/compose/install/) if you intend to use the dockerized setup - for self hosting.
-- Alternatively, you can run the addon natively with `cargo run` (requires [Rust](https://rustup.rs/)). - for development purposes.
-  - If running natively, ensure you have **ffmpeg** and **ffprobe** installed and accessible in your system's PATH, as they are required for stream remuxing.
-
-### Using Docker Compose
-
-The easiest way to get started is with the included `docker-compose.yml` file.
-
-1. **Configure Environment:** Edit the `docker-compose.yml` and modify the environment variables block under `x-config`, specifically setting your `public_url`, and the API credentials for qBittorrent and Jackett.
-2. **Start Services:**
-   ```bash
-   docker-compose up -d
-   ```
-3. **Initial Setup:**
-   - Access **Jackett** at `http://<your-ip>:9117` and set up your indexers. Copy your API Key to the docker configuration or `.env` file.
-   - Check the **qBittorrent** logs (`docker-compose logs qbittorrent`) to find the generated initial admin password.
-   - Access **qBittorrent** at `http://<your-ip>:8080` using the username `admin` and the password from the logs, then set a new password in the settings. Update your docker configuration or `.env` file with this new password.
-4. **Restart the Addon Server** so it picks up the correct API credentials.
-5. **Access the Addon:**
-   Navigate to the URL defined as your `public_url` in your web browser. This page will display your `manifest.json` installation link.
-
-### Running with Cargo (Local Development)
-
-> [!NOTE]
-> Running the project via Cargo **only runs the addon server**; it does not start the Jackett and qBittorrent services.
-> Furthermore, actual file-based streaming will not work because the addon must share a Docker volume (or local path) with qBittorrent to access the downloaded files. This section is primarily intended for local development, pointing to existing external servers.
-
-If you prefer to run the project via Cargo for development purposes:
-
-1. Create a `.env` file in the project root directory with the following variables:
-   ```env
-   JACKETT_URL=http://localhost:9117
-   JACKETT_API_KEY=your_jackett_api_key
-   PUBLIC_URL=http://localhost:7000
-   QBITTORRENT_URL=http://localhost:8080
-   QBITTORRENT_USERNAME=admin
-   QBITTORRENT_PASSWORD=your_qbittorrent_password
-   DOWNLOAD_PATH=/path/to/downloads
-   JACKETT_SEARCH_TYPE=text
-   PORT=7000
-   ```
-2. Build and run the project:
-   ```bash
-   cargo run --release
-   ```
-3. The addon homepage will be available at `http://localhost:7000`.
+👉 [**Check out the Self Hosting Guide here**](SELF_HOSTING.md)

@@ -63,10 +63,17 @@ async fn is_simple_format(path: &std::path::Path) -> bool {
 
 pub async fn stream_file(
     State(state): State<AppState>,
-    Path(info_hash): Path<String>,
+    Path((api_key, info_hash)): Path<(String, String)>,
     Query(params): Query<HashMap<String, String>>,
     req: Request,
 ) -> Response {
+    if !state.db.validate_api_key(&api_key) {
+        return axum::response::Response::builder()
+            .status(401)
+            .body(Body::from("Unauthorized"))
+            .unwrap();
+    }
+
     let file_path = params.get("filePath").unwrap_or(&String::new()).clone();
     let full_path = std::path::Path::new(&state.config.download_path).join(&file_path);
     

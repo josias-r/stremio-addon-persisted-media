@@ -1,4 +1,4 @@
-use axum::{extract::{Path, State}, response::{IntoResponse, Json}};
+use axum::{extract::{Path, State}, http::StatusCode, response::{IntoResponse, Json, Response}};
 use crate::jackett::TorznabParams;
 use crate::cinemeta::get_cinemeta_title;
 use crate::parser::is_definitely_wrong_episode;
@@ -8,9 +8,16 @@ use std::sync::Arc;
 
 pub async fn series_stream(
     State(state): State<AppState>,
-    Path(id_ext): Path<String>,
-) -> impl IntoResponse {
+    Path((api_key, id_ext)): Path<(String, String)>,
+) -> Result<impl IntoResponse, Response> {
+    if !state.db.validate_api_key(&api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API Key").into_response());
+    }
+
     let id_str = id_ext.replace(".json", "");
+    
+    // Update watch history
+    let _ = state.db.update_watch_history(&api_key, &id_str, "series");
     let parts: Vec<&str> = id_str.split(':').collect();
     let series_id = parts[0].to_string();
     let season: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
@@ -34,6 +41,6 @@ pub async fn series_stream(
 
     let filter_fn = Arc::new(move |title: &str| is_definitely_wrong_episode(title, season, episode));
     
-    let response = build_stream_response(&state, &id_str, true, season, episode, fetch_plans, Some(filter_fn), &expected_title).await;
-    Json(response)
+    let response = build_stream_response(&state, &api_key, &id_str, true, season, episode, fetch_plans, Some(filter_fn), &expected_title).await;
+    Ok(Json(response))
 }

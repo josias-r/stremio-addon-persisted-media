@@ -47,6 +47,7 @@ pub async fn fetch_and_dedup_jackett_results(
 
 pub async fn build_stream_response(
     state: &AppState,
+    api_key: &str,
     stremio_id: &str,
     is_series: bool,
     season: u32,
@@ -105,7 +106,7 @@ pub async fn build_stream_response(
                     stream: Stream {
                         name: Some(name_str.to_string()),
                         title: Some(title_str),
-                        url: Some(format!("{}/play-file/{}/{}?fileIdx={}&filePath={}", state.config.public_url, urlencoding::encode(stremio_id), torrent.hash, idx, urlencoding::encode(&file.name))),
+                        url: Some(format!("{}/{}/play-file/{}/{}?fileIdx={}&filePath={}", state.config.public_url, api_key, urlencoding::encode(stremio_id), torrent.hash, idx, urlencoding::encode(&file.name))),
                         description: None,
                         yt_id: None,
                         info_hash: None,
@@ -138,7 +139,7 @@ pub async fn build_stream_response(
             stream: Stream {
                 name: Some(format!("Qbit - {}", r.tracker)),
                 title: Some(format!("{}{}\n👤 {} | 💾 {:.2} GB", prefix, r.title, r.seeders, size_gb)),
-                url: Some(format!("{}/trigger-download/{}/{}?magnet={}", state.config.public_url, urlencoding::encode(stremio_id), info_hash, urlencoding::encode(&magnet_or_url.unwrap()))),
+                url: Some(format!("{}/{}/trigger-download/{}/{}?magnet={}", state.config.public_url, api_key, urlencoding::encode(stremio_id), info_hash, urlencoding::encode(&magnet_or_url.unwrap()))),
                 description: None,
                 yt_id: None,
                 info_hash: None,

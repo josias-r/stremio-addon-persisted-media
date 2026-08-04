@@ -27,6 +27,7 @@ COPY placeholder.mp4 /app/placeholder.mp4
 
 # Environment variables
 ENV PORT=7000
+ENV DATA_DIR=/app/data
 
 # Expose port
 EXPOSE 7000

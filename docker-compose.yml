@@ -66,7 +66,6 @@ services:
     volumes:
       # Mount the same media_downloads volume to /downloads, but read-only!
       - mini_media_server_downloads:/downloads:ro
-      # UNUSED ATM - WILL BE USED TO PERSIST RUNTIME CONFIGS-SIMPEL DATA SOON
       - mini_media_server_addon_data:/app/data
     # ports:
     #   - "7000:7000"
@@ -78,7 +77,6 @@ services:
 volumes:
   mini_media_server_jackett_data:
   mini_media_server_qbittorrent_data:
-  # UNUSED ATM - WILL BE USED TO PERSIST RUNTIME CONFIGS-SIMPEL DATA SOON
   mini_media_server_addon_data:
   # example with external mounted hdd
   mini_media_server_downloads:

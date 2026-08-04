@@ -8,7 +8,7 @@ node_modules
 .env
 
 # db
-torrents.db
+data.db
 
 
 # Added by cargo

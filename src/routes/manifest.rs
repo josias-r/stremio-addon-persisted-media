@@ -1,8 +1,16 @@
-use axum::response::{IntoResponse, Json};
+use axum::{extract::{Path, State}, http::StatusCode, response::{IntoResponse, Json, Response}};
 use serde_json::json;
+use crate::routes::AppState;
 
-pub async fn manifest() -> impl IntoResponse {
-    Json(json!({
+pub async fn manifest(
+    State(state): State<AppState>,
+    Path(api_key): Path<String>,
+) -> Result<impl IntoResponse, Response> {
+    if !state.db.validate_api_key(&api_key) {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid API Key").into_response());
+    }
+
+    Ok(Json(json!({
         "id": "mini-media-server.addon",
         "version": "1.0.0",
         "name": "Mini Media Server",
@@ -10,5 +18,5 @@ pub async fn manifest() -> impl IntoResponse {
         "resources": ["stream"],
         "types": ["movie", "series"],
         "catalogs": []
-    }))
+    })))
 }

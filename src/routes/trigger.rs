@@ -9,10 +9,14 @@ use super::AppState;
 
 pub async fn trigger_download(
     State(state): State<AppState>,
-    Path((stremio_id, info_hash)): Path<(String, String)>,
+    Path((api_key, stremio_id, info_hash)): Path<(String, String, String)>,
     Query(params): Query<HashMap<String, String>>,
     req: Request,
 ) -> Response {
+    if !state.db.validate_api_key(&api_key) {
+        return (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+
     let base_id = stremio_id.split(':').next().unwrap_or(&stremio_id);
     if let Some(magnet) = params.get("magnet") {
         state.qbit.add_torrent(magnet, base_id).await;
@@ -46,7 +50,7 @@ pub async fn trigger_download(
         state.qbit.set_file_priorities(&info_hash, &[chosen_idx], 1).await;
         state.qbit.resume_torrent(&info_hash).await;
         
-        let redirect_url = format!("{}/stream-file/{}?filePath={}", state.config.public_url, info_hash, urlencoding::encode(&chosen_file.name));
+        let redirect_url = format!("{}/{}/stream-file/{}?filePath={}", state.config.public_url, api_key, info_hash, urlencoding::encode(&chosen_file.name));
         Redirect::temporary(&redirect_url).into_response()
     } else {
         placeholder.oneshot(req).await.unwrap().into_response()

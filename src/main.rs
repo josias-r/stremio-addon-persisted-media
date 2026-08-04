@@ -1,3 +1,4 @@
+mod db;
 mod config;
 mod models;
 mod qbittorrent;
@@ -36,10 +37,18 @@ async fn main() {
     let config = config::Config::load();
     let qbit = qbittorrent::QbitClient::new(config.clone());
     
+    let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| ".".to_string());
+    let db_path = format!("{}/data.db", data_dir);
+    let db = db::DbClient::new(&db_path);
+    
+    // Ensure admin password is generated/exists
+    let _ = db.get_admin_password().unwrap();
+
     let state = routes::AppState {
         config: Arc::new(config.clone()),
         qbit: Arc::new(qbit),
         http_client: Client::builder().build().unwrap(),
+        db: Arc::new(db),
     };
     
     let app = routes::create_router(state);
