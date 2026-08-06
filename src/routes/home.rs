@@ -101,7 +101,7 @@ pub async fn home(State(state): State<AppState>) -> impl IntoResponse {
                 }
                 
                 div class="client-card" {
-                    h3 { "Fusion - MediaCenter" }
+                    h3 { "Fusion - Media Center" }
                     p { "A popular third-party Stremio-compatible media center tailored for iOS and Apple TV users." }
                     a href="https://apps.apple.com/us/app/fusion-media-center/id6759285919" target="_blank" {
                         "View on App Store " span { "→" }
