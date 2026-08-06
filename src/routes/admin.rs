@@ -51,9 +51,9 @@ async fn admin_dashboard(
             h2 { "Users Management" }
             div class="card" style="margin-bottom: 2rem;" {
                 h3 style="margin-top: 0; margin-bottom: 1rem;" { "Create User" }
-                form method="POST" action="/admin/users" style="display: flex; gap: 1rem; align-items: center;" {
-                    input type="text" name="username" placeholder="Username" required class="input-field" style="margin-bottom: 0; flex-grow: 1;" {}
-                    button type="submit" class="btn" { "Create New User (API Key)" }
+                form method="POST" action="/admin/users" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: stretch;" {
+                    input type="text" name="username" placeholder="Username" required class="input-field" style="margin-bottom: 0; flex: 1 1 150px; min-width: 0;" {}
+                    button type="submit" class="btn" style="flex: 1 1 150px; white-space: normal; height: auto; text-align: center; min-width: 0;" { "Create New User (API Key)" }
                 }
             }
 
@@ -69,8 +69,8 @@ async fn admin_dashboard(
                     @for (username, api_key, created_at) in &users {
                         tr {
                             td { (username) }
-                            td { code { (api_key) } }
-                            td { (created_at) }
+                            td style="white-space: nowrap;" { code { (api_key) } }
+                            td style="white-space: nowrap;" { (created_at) }
                             td {
                                 form method="POST" action="/admin/users/delete" style="margin: 0;" {
                                     input type="hidden" name="api_key" value=(api_key) {}
@@ -91,8 +91,8 @@ async fn admin_dashboard(
                     @let size_gb = t.size as f64 / 1024.0 / 1024.0 / 1024.0;
                     @let progress_pct = (t.progress * 100.0).round();
                     div class="card" style="padding: 1.5rem; margin-bottom: 0;" {
-                        div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;" {
-                            div style="flex-grow: 1; min-width: 0;" {
+                        div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;" {
+                            div style="flex-grow: 1; min-width: 0; flex-basis: 250px;" {
                                 h4 title=(t.name) style="color: var(--primary); margin: 0 0 0.5rem 0; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" { (t.name) }
                                 div style="display: flex; gap: 1.5rem; flex-wrap: wrap; color: var(--text-muted); font-size: 0.9rem;" {
                                     span { strong style="color: var(--text);" { "Size: " } (format!("{:.2} GB", size_gb)) }
@@ -104,7 +104,7 @@ async fn admin_dashboard(
                                         @let last_watched_iso = format!("{}Z", last_watched.replace(" ", "T"));
                                         span { strong style="color: var(--text);" { "Last Watched: " } span class="relative-time" data-time=(last_watched_iso) { (last_watched) } }
                                     }
-                                    span { strong style="color: var(--text);" { "Hash: " } code { (t.hash) } }
+                                    span title=(t.hash) style="max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" { strong style="color: var(--text);" { "Hash: " } code { (t.hash) } }
                                 }
                             }
                             form method="POST" action="/admin/torrents/delete" style="margin: 0; flex-shrink: 0;" {
