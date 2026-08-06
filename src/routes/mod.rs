@@ -22,6 +22,7 @@ pub struct AppState {
     pub qbit: Arc<QbitClient>,
     pub http_client: Client,
     pub db: Arc<crate::db::DbClient>,
+    pub admin_session_token: String,
 }
 
 pub fn create_router(state: AppState) -> Router {

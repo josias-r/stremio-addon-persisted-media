@@ -50,6 +50,7 @@ async fn main() {
         qbit: Arc::new(qbit),
         http_client: Client::builder().build().unwrap(),
         db: Arc::new(db),
+        admin_session_token: uuid::Uuid::new_v4().to_string(),
     };
     
     // Spawn background retention worker

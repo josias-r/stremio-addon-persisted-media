@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use base64::prelude::*;
 use axum::http::HeaderMap;
 use serde::Deserialize;
 use maud::html;
@@ -15,6 +14,8 @@ use crate::routes::ui::base_layout;
 
 pub fn admin_routes() -> Router<AppState> {
     Router::new()
+        .route("/login", get(login_page).post(login_submit))
+        .route("/logout", get(logout))
         .route("/", get(admin_dashboard))
         .route("/users", post(create_user))
         .route("/users/delete", post(delete_user))
@@ -22,42 +23,16 @@ pub fn admin_routes() -> Router<AppState> {
 }
 
 fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<(), Response> {
-    let auth_header = headers.get(header::AUTHORIZATION)
-        .and_then(|h| h.to_str().ok())
-        .unwrap_or("");
-
-    if !auth_header.starts_with("Basic ") {
-        return Err(unauthorized_response());
+    if let Some(cookie_str) = headers.get(header::COOKIE).and_then(|h| h.to_str().ok()) {
+        let expected_cookie = format!("admin_session={}", state.admin_session_token);
+        for cookie in cookie_str.split(';') {
+            if cookie.trim() == expected_cookie {
+                return Ok(());
+            }
+        }
     }
-
-    let b64 = &auth_header[6..];
-    let decoded = match BASE64_STANDARD.decode(b64) {
-        Ok(bytes) => String::from_utf8(bytes).unwrap_or_default(),
-        Err(_) => return Err(unauthorized_response()),
-    };
-
-    let parts: Vec<&str> = decoded.splitn(2, ':').collect();
-    if parts.len() != 2 || parts[0] != "admin" {
-        return Err(unauthorized_response());
-    }
-
-    let password = parts[1];
-    let expected_password = state.db.get_admin_password().unwrap_or_default();
-
-    if password == expected_password {
-        Ok(())
-    } else {
-        Err(unauthorized_response())
-    }
-}
-
-fn unauthorized_response() -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Basic realm=\"Admin Panel\"")],
-        "Unauthorized",
-    )
-        .into_response()
+    
+    Err(axum::response::Redirect::to("/admin/login").into_response())
 }
 
 async fn admin_dashboard(
@@ -72,7 +47,7 @@ async fn admin_dashboard(
     let users = state.db.get_users().unwrap_or_default();
 
     let content = html! {
-        div class="section" style="margin-top: 3rem;" {
+        div class="section" style="margin-top: 1rem;" {
             h2 { "Users Management" }
             div class="card" style="margin-bottom: 2rem;" {
                 h3 style="margin-top: 0; margin-bottom: 1rem;" { "Create User" }
@@ -145,6 +120,11 @@ async fn admin_dashboard(
                     }
                 }
             }
+        }
+        
+        div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; margin-top: 3rem; margin-bottom: 2rem;" {
+            a href="/admin/logout" class="btn btn-danger" style="padding: 0.5rem 2rem;" { "Logout" }
+            a href="/" style="color: var(--text-muted); text-decoration: none; font-size: 0.9rem;" { "← Back to Home" }
         }
         
         script {
@@ -260,4 +240,66 @@ async fn delete_torrent_handler(
     }
     
     Ok(axum::response::Redirect::to("/admin"))
+}
+
+#[derive(Deserialize)]
+struct LoginForm {
+    password: String,
+}
+
+async fn login_page() -> impl IntoResponse {
+    let content = html! {
+        div class="section" style="max-width: 400px; margin: 0 auto; margin-top: 5rem;" {
+            div class="card" {
+                h2 style="text-align: center; border: none; margin-bottom: 2rem;" { "Admin Login" }
+                form method="POST" action="/admin/login" style="display: flex; flex-direction: column; gap: 1rem;" {
+                    input type="password" name="password" placeholder="Admin Password" required class="input-field" style="margin-bottom: 0;" {}
+                    button type="submit" class="btn" style="width: 100%;" { "Log In" }
+                }
+            }
+        }
+    };
+    base_layout("Admin Login", "Please sign in", content)
+}
+
+async fn login_submit(
+    State(state): State<AppState>,
+    axum::extract::Form(form): axum::extract::Form<LoginForm>,
+) -> Response {
+    let expected_password = state.db.get_admin_password().unwrap_or_default();
+    
+    if form.password == expected_password {
+        let cookie_value = format!(
+            "admin_session={}; Path=/admin; HttpOnly; SameSite=Lax",
+            state.admin_session_token
+        );
+        (
+            StatusCode::SEE_OTHER,
+            [(header::SET_COOKIE, cookie_value), (header::LOCATION, "/admin".to_string())],
+        ).into_response()
+    } else {
+        let content = html! {
+            div class="section" style="max-width: 400px; margin: 0 auto; margin-top: 5rem;" {
+                div class="card" {
+                    h2 style="text-align: center; border: none; margin-bottom: 2rem;" { "Admin Login" }
+                    div style="color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 0.5rem; border-radius: 4px; margin-bottom: 1rem; text-align: center;" {
+                        "Invalid password"
+                    }
+                    form method="POST" action="/admin/login" style="display: flex; flex-direction: column; gap: 1rem;" {
+                        input type="password" name="password" placeholder="Admin Password" required class="input-field" style="margin-bottom: 0;" {}
+                        button type="submit" class="btn" style="width: 100%;" { "Log In" }
+                    }
+                }
+            }
+        };
+        base_layout("Admin Login", "Please sign in", content).into_response()
+    }
+}
+
+async fn logout() -> Response {
+    let cookie_value = "admin_session=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0";
+    (
+        StatusCode::SEE_OTHER,
+        [(header::SET_COOKIE, cookie_value.to_string()), (header::LOCATION, "/admin/login".to_string())],
+    ).into_response()
 }
