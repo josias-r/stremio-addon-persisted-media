@@ -72,42 +72,6 @@ async fn admin_dashboard(
     let users = state.db.get_users().unwrap_or_default();
 
     let content = html! {
-        div class="section" {
-            h2 { "Current Torrents & Watch History" }
-            div class="card" style="padding: 0; overflow-x: auto;" {
-                table {
-                    tr {
-                        th { "Name" }
-                        th { "Size (GB)" }
-                        th { "Progress" }
-                        th { "State" }
-                        th { "Last Watched" }
-                        th { "Info Hash" }
-                        th { "Action" }
-                    }
-                    @for t in &torrents {
-                        @let last_watched = watch_times.get(&t.hash.to_lowercase()).map(|s| s.as_str()).unwrap_or("Never");
-                        @let size_gb = t.size as f64 / 1024.0 / 1024.0 / 1024.0;
-                        @let progress_pct = (t.progress * 100.0).round();
-                        tr {
-                            td { strong style="color: var(--primary);" { (t.name) } }
-                            td { (format!("{:.2}", size_gb)) }
-                            td { (progress_pct) "%" }
-                            td { (t.state) }
-                            td { (last_watched) }
-                            td { code { (if t.hash.len() > 8 { format!("{}...", &t.hash[..8]) } else { t.hash.clone() }) } }
-                            td {
-                                form method="POST" action="/admin/torrents/delete" style="margin: 0;" {
-                                    input type="hidden" name="hash" value=(t.hash) {}
-                                    button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" { "Delete" }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         div class="section" style="margin-top: 3rem;" {
             h2 { "Users Management" }
             div class="card" style="margin-bottom: 2rem;" {
@@ -120,7 +84,7 @@ async fn admin_dashboard(
 
             h3 { "Active Users" }
             div class="card" style="padding: 0; overflow-x: auto;" {
-                table {
+                table style="margin-bottom: 0;" {
                     tr {
                         th { "Username" }
                         th { "API Key" }
@@ -142,6 +106,76 @@ async fn admin_dashboard(
                     }
                 }
             }
+        }
+
+         div class="section" {
+            h2 { "Current Torrents & Watch History" }
+            div style="display: flex; flex-direction: column; gap: 1rem;" {
+                @for t in &torrents {
+                    @let last_watched = watch_times.get(&t.hash.to_lowercase()).map(|s| s.as_str()).unwrap_or("Never");
+                    @let size_gb = t.size as f64 / 1024.0 / 1024.0 / 1024.0;
+                    @let progress_pct = (t.progress * 100.0).round();
+                    div class="card" style="padding: 1.5rem; margin-bottom: 0;" {
+                        div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;" {
+                            div style="flex-grow: 1; min-width: 0;" {
+                                h4 title=(t.name) style="color: var(--primary); margin: 0 0 0.5rem 0; font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" { (t.name) }
+                                div style="display: flex; gap: 1.5rem; flex-wrap: wrap; color: var(--text-muted); font-size: 0.9rem;" {
+                                    span { strong style="color: var(--text);" { "Size: " } (format!("{:.2} GB", size_gb)) }
+                                    span { strong style="color: var(--text);" { "Progress: " } (progress_pct) "%" }
+                                    span { strong style="color: var(--text);" { "State: " } (t.state) }
+                                    @if last_watched == "Never" {
+                                        span { strong style="color: var(--text);" { "Last Watched: " } "Never" }
+                                    } @else {
+                                        @let last_watched_iso = format!("{}Z", last_watched.replace(" ", "T"));
+                                        span { strong style="color: var(--text);" { "Last Watched: " } span class="relative-time" data-time=(last_watched_iso) { (last_watched) } }
+                                    }
+                                    span { strong style="color: var(--text);" { "Hash: " } code { (t.hash) } }
+                                }
+                            }
+                            form method="POST" action="/admin/torrents/delete" style="margin: 0; flex-shrink: 0;" {
+                                input type="hidden" name="hash" value=(t.hash) {}
+                                button type="submit" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem;" { "Delete" }
+                            }
+                        }
+                    }
+                }
+                @if torrents.is_empty() {
+                    div class="card" style="text-align: center; color: var(--text-muted);" {
+                        "No active torrents found."
+                    }
+                }
+            }
+        }
+        
+        script {
+            (maud::PreEscaped(r#"
+            document.addEventListener("DOMContentLoaded", () => {
+                const timeElements = document.querySelectorAll(".relative-time");
+                const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+                
+                timeElements.forEach(el => {
+                    const date = new Date(el.getAttribute("data-time"));
+                    if (!isNaN(date)) {
+                        const now = new Date();
+                        const diffMs = date - now;
+                        const diffSecs = Math.round(diffMs / 1000);
+                        const diffMins = Math.round(diffSecs / 60);
+                        const diffHours = Math.round(diffMins / 60);
+                        const diffDays = Math.round(diffHours / 24);
+                        
+                        if (Math.abs(diffSecs) < 60) {
+                            el.textContent = "just now";
+                        } else if (Math.abs(diffMins) < 60) {
+                            el.textContent = rtf.format(diffMins, "minute");
+                        } else if (Math.abs(diffHours) < 24) {
+                            el.textContent = rtf.format(diffHours, "hour");
+                        } else {
+                            el.textContent = rtf.format(diffDays, "day");
+                        }
+                    }
+                });
+            });
+            "#))
         }
     };
 
