@@ -11,6 +11,8 @@ pub async fn play_file(
         return (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
 
+    let _ = state.db.update_watch_history(&api_key, &info_hash, "torrent");
+
     if let Some(idx_str) = params.get("fileIdx") {
         if let Ok(idx) = idx_str.parse::<usize>() {
             state.qbit.set_file_priorities(&info_hash, &[idx], 1).await;

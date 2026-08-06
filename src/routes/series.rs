@@ -15,9 +15,7 @@ pub async fn series_stream(
     }
 
     let id_str = id_ext.replace(".json", "");
-    
-    // Update watch history
-    let _ = state.db.update_watch_history(&api_key, &id_str, "series");
+
     let parts: Vec<&str> = id_str.split(':').collect();
     let series_id = parts[0].to_string();
     let season: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);

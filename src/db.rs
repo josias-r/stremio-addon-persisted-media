@@ -128,18 +128,25 @@ impl DbClient {
         Ok(())
     }
 
-    pub fn get_watch_history(&self) -> Result<Vec<(String, String, String, String)>> {
+    pub fn get_torrent_watch_times(&self) -> Result<std::collections::HashMap<String, String>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare("SELECT api_key, item_id, item_type, last_watched_at FROM watch_history ORDER BY last_watched_at DESC LIMIT 100")?;
+        let mut stmt = conn.prepare("SELECT item_id, MAX(last_watched_at) FROM watch_history GROUP BY item_id")?;
         let history = stmt.query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
-        let mut results = Vec::new();
+        let mut map = std::collections::HashMap::new();
         for item in history {
-            results.push(item?);
+            let (id, time) = item?;
+            map.insert(id.to_lowercase(), time);
         }
-        Ok(results)
+        Ok(map)
+    }
+
+    pub fn delete_watch_history(&self, item_id: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM watch_history WHERE item_id = ?", params![item_id])?;
+        Ok(())
     }
 
     pub fn get_users(&self) -> Result<Vec<(String, String, String)>> {

@@ -17,6 +17,8 @@ pub async fn trigger_download(
         return (axum::http::StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
 
+    let _ = state.db.update_watch_history(&api_key, &info_hash, "torrent");
+
     let base_id = stremio_id.split(':').next().unwrap_or(&stremio_id);
     if let Some(magnet) = params.get("magnet") {
         state.qbit.add_torrent(magnet, base_id).await;

@@ -15,6 +15,16 @@ pub struct QbitClient {
 pub struct QbitTorrent {
     pub hash: String,
     pub tags: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub progress: f64,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub added_on: u64,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -167,6 +177,72 @@ impl QbitClient {
             Err(e) => {
                 error!("Error fetching torrents: {}", e);
                 vec![]
+            }
+        }
+    }
+
+    pub async fn get_all_torrents(&self) -> Vec<QbitTorrent> {
+        let sid = match self.get_session_cookie().await {
+            Some(s) => s,
+            None => return vec![],
+        };
+
+        debug!("Fetching all torrents");
+        let url = format!("{}/api/v2/torrents/info?filter=all", self.config.qbittorrent_url);
+        match self.client.get(&url)
+            .header("Cookie", sid)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                if let Ok(torrents) = res.json::<Vec<QbitTorrent>>().await {
+                    torrents
+                } else {
+                    error!("Failed to parse qBittorrent torrents JSON");
+                    vec![]
+                }
+            }
+            Ok(res) => {
+                error!("Failed to fetch all torrents, status: {}", res.status());
+                vec![]
+            }
+            Err(e) => {
+                error!("Error fetching all torrents: {}", e);
+                vec![]
+            }
+        }
+    }
+
+    pub async fn delete_torrent(&self, hash: &str, delete_files: bool) -> bool {
+        let sid = match self.get_session_cookie().await {
+            Some(s) => s,
+            None => return false,
+        };
+
+        debug!("Deleting torrent {} (delete_files: {})", hash, delete_files);
+        let params = [
+            ("hashes", hash),
+            ("deleteFiles", if delete_files { "true" } else { "false" }),
+        ];
+
+        let url = format!("{}/api/v2/torrents/delete", self.config.qbittorrent_url);
+        match self.client.post(&url)
+            .header("Cookie", sid)
+            .form(&params)
+            .send()
+            .await
+        {
+            Ok(res) if res.status().is_success() => {
+                debug!("Successfully deleted torrent {}", hash);
+                true
+            }
+            Ok(res) => {
+                error!("Failed to delete torrent {}, status: {}", hash, res.status());
+                false
+            }
+            Err(e) => {
+                error!("Error deleting torrent: {}", e);
+                false
             }
         }
     }

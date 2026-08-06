@@ -8,6 +8,7 @@ mod parser;
 mod routes;
 mod matcher;
 mod stream_builder;
+mod worker;
 
 use std::sync::Arc;
 use reqwest::Client;
@@ -51,6 +52,9 @@ async fn main() {
         db: Arc::new(db),
     };
     
+    // Spawn background retention worker
+    worker::start_retention_worker(state.clone());
+
     let app = routes::create_router(state);
     
     let addr = format!("0.0.0.0:{}", config.port);

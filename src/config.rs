@@ -12,6 +12,7 @@ pub struct Config {
     pub qbittorrent_username: String,
     pub qbittorrent_password: String,
     pub download_path: String,
+    pub retention_days: u64,
 }
 
 impl Config {
@@ -32,6 +33,10 @@ impl Config {
             qbittorrent_username: get_req_env("QBITTORRENT_USERNAME"),
             qbittorrent_password: get_req_env("QBITTORRENT_PASSWORD"),
             download_path: get_req_env("DOWNLOAD_PATH"),
+            retention_days: env::var("RETENTION_DAYS")
+                .unwrap_or_else(|_| "0".to_string())
+                .parse()
+                .unwrap_or(0),
         }
     }
 }

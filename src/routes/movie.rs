@@ -13,9 +13,7 @@ pub async fn movie_stream(
     }
 
     let id = id_ext.replace(".json", "");
-    
-    // Update watch history
-    let _ = state.db.update_watch_history(&api_key, &id, "movie");
+
     let mut expected_title = id.clone();
     let mut fetch_plans = vec![TorznabParams::MovieImdb { imdb_id: id.clone() }];
     

@@ -18,6 +18,7 @@ pub fn admin_routes() -> Router<AppState> {
         .route("/", get(admin_dashboard))
         .route("/users", post(create_user))
         .route("/users/delete", post(delete_user))
+        .route("/torrents/delete", post(delete_torrent_handler))
 }
 
 fn check_auth(headers: &HeaderMap, state: &AppState) -> Result<(), Response> {
@@ -65,11 +66,49 @@ async fn admin_dashboard(
 ) -> Result<impl IntoResponse, Response> {
     check_auth(&headers, &state)?;
 
-    let history = state.db.get_watch_history().unwrap_or_default();
+    let watch_times = state.db.get_torrent_watch_times().unwrap_or_default();
+    let mut torrents = state.qbit.get_all_torrents().await;
+    torrents.sort_by(|a, b| a.added_on.cmp(&b.added_on));
     let users = state.db.get_users().unwrap_or_default();
 
     let content = html! {
         div class="section" {
+            h2 { "Current Torrents & Watch History" }
+            div class="card" style="padding: 0; overflow-x: auto;" {
+                table {
+                    tr {
+                        th { "Name" }
+                        th { "Size (GB)" }
+                        th { "Progress" }
+                        th { "State" }
+                        th { "Last Watched" }
+                        th { "Info Hash" }
+                        th { "Action" }
+                    }
+                    @for t in &torrents {
+                        @let last_watched = watch_times.get(&t.hash.to_lowercase()).map(|s| s.as_str()).unwrap_or("Never");
+                        @let size_gb = t.size as f64 / 1024.0 / 1024.0 / 1024.0;
+                        @let progress_pct = (t.progress * 100.0).round();
+                        tr {
+                            td { strong style="color: var(--primary);" { (t.name) } }
+                            td { (format!("{:.2}", size_gb)) }
+                            td { (progress_pct) "%" }
+                            td { (t.state) }
+                            td { (last_watched) }
+                            td { code { (if t.hash.len() > 8 { format!("{}...", &t.hash[..8]) } else { t.hash.clone() }) } }
+                            td {
+                                form method="POST" action="/admin/torrents/delete" style="margin: 0;" {
+                                    input type="hidden" name="hash" value=(t.hash) {}
+                                    button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" { "Delete" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="section" style="margin-top: 3rem;" {
             h2 { "Users Management" }
             div class="card" style="margin-bottom: 2rem;" {
                 h3 style="margin-top: 0; margin-bottom: 1rem;" { "Create User" }
@@ -80,7 +119,7 @@ async fn admin_dashboard(
             }
 
             h3 { "Active Users" }
-            div class="card" style="padding: 0;" {
+            div class="card" style="padding: 0; overflow-x: auto;" {
                 table {
                     tr {
                         th { "Username" }
@@ -88,7 +127,7 @@ async fn admin_dashboard(
                         th { "Created At" }
                         th { "Action" }
                     }
-                    @for (username, api_key, created_at) in users {
+                    @for (username, api_key, created_at) in &users {
                         tr {
                             td { (username) }
                             td { code { (api_key) } }
@@ -99,28 +138,6 @@ async fn admin_dashboard(
                                     button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" { "Delete" }
                                 }
                             }
-                        }
-                    }
-                }
-            }
-        }
-
-        div class="section" {
-            h2 { "Watch History" }
-            div class="card" style="padding: 0;" {
-                table {
-                    tr {
-                        th { "API Key" }
-                        th { "Item ID" }
-                        th { "Type" }
-                        th { "Last Watched" }
-                    }
-                    @for (api_key, item_id, item_type, last_watched) in history {
-                        tr {
-                            td { code { (api_key) } }
-                            td { (item_id) }
-                            td { (item_type) }
-                            td { (last_watched) }
                         }
                     }
                 }
@@ -189,5 +206,24 @@ async fn delete_user(
 ) -> Result<axum::response::Redirect, Response> {
     check_auth(&headers, &state)?;
     let _ = state.db.delete_user(&form.api_key);
+    Ok(axum::response::Redirect::to("/admin"))
+}
+
+#[derive(Deserialize)]
+struct DeleteTorrentForm {
+    hash: String,
+}
+
+async fn delete_torrent_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Form(form): axum::extract::Form<DeleteTorrentForm>,
+) -> Result<axum::response::Redirect, Response> {
+    check_auth(&headers, &state)?;
+    
+    if state.qbit.delete_torrent(&form.hash, true).await {
+        let _ = state.db.delete_watch_history(&form.hash);
+    }
+    
     Ok(axum::response::Redirect::to("/admin"))
 }
